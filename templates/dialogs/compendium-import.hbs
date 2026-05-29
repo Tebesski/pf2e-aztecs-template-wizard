@@ -1,0 +1,19 @@
+<div class="form-group">
+  <label>{{templateLabel}}</label>
+  <select class="atw-compendium-import-id">
+    {{#each entries}}
+      <option value="{{id}}">{{label}}</option>
+    {{/each}}
+  </select>
+</div>
+<div class="form-group stacked atw-dialog-form-group">
+  <label class="atw-inline-checkbox">
+    <input type="radio" name="atw-compendium-import-mode" value="replace" checked>
+    <span>{{replaceLabel}}</span>
+  </label>
+  <label class="atw-inline-checkbox">
+    <input type="radio" name="atw-compendium-import-mode" value="append">
+    <span>{{appendLabel}}</span>
+  </label>
+</div>
+<p class="atw-dialog-hint">{{hint}}</p>

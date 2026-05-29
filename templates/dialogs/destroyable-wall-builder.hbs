@@ -1,0 +1,109 @@
+<div class="atw-wall-builder-form">
+  <section class="atw-wall-builder-section">
+    <h3>Wall Actors</h3>
+    <div class="atw-wall-builder-grid">
+      <label>
+        <span>Name</span>
+        <input type="text" name="name" value="Wall">
+      </label>
+      <label>
+        <span>HP</span>
+        <input type="number" name="hp" value="30" min="1" step="1">
+      </label>
+      <label>
+        <span>AC</span>
+        <input type="number" name="ac" value="15" min="1" step="1">
+      </label>
+      <label>
+        <span>Hardness</span>
+        <input type="number" name="hardness" value="5" min="0" step="1">
+      </label>
+      <div class="atw-wall-builder-count">
+        <span>Selected walls</span>
+        <strong>{{wallCount}}</strong>
+      </div>
+    </div>
+  </section>
+
+  <section class="atw-wall-builder-section" data-wall-list="immunities" data-wall-list-kind="tag">
+    <h3>Immunities</h3>
+    <div class="atw-wall-builder-picker">
+      <select class="atw-wall-builder-type">
+        {{#each damageTypes}}
+          <option value="{{value}}">{{label}}</option>
+        {{/each}}
+      </select>
+      <button type="button" data-action="atw-wall-add-tag">
+        <i class="fa-solid fa-plus"></i>
+      </button>
+    </div>
+    <div class="atw-wall-builder-badges" hidden></div>
+    <input type="hidden" name="immunities" value="[]">
+  </section>
+
+  <section class="atw-wall-builder-section" data-wall-list="resistances" data-wall-list-kind="irw">
+    <h3>Resistances</h3>
+    <div class="atw-wall-builder-picker">
+      <input type="number" class="atw-wall-builder-value" value="5" min="1" step="1">
+      <select class="atw-wall-builder-type">
+        {{#each damageTypes}}
+          <option value="{{value}}">{{label}}</option>
+        {{/each}}
+      </select>
+      <button type="button" data-action="atw-wall-add-irw">
+        <i class="fa-solid fa-plus"></i>
+      </button>
+    </div>
+    <div class="atw-wall-builder-badges" hidden></div>
+    <input type="hidden" name="resistances" value="[]">
+  </section>
+
+  <section class="atw-wall-builder-section" data-wall-list="weaknesses" data-wall-list-kind="irw">
+    <h3>Weaknesses</h3>
+    <div class="atw-wall-builder-picker">
+      <input type="number" class="atw-wall-builder-value" value="5" min="1" step="1">
+      <select class="atw-wall-builder-type">
+        {{#each damageTypes}}
+          <option value="{{value}}">{{label}}</option>
+        {{/each}}
+      </select>
+      <button type="button" data-action="atw-wall-add-irw">
+        <i class="fa-solid fa-plus"></i>
+      </button>
+    </div>
+    <div class="atw-wall-builder-badges" hidden></div>
+    <input type="hidden" name="weaknesses" value="[]">
+  </section>
+
+  <section class="atw-wall-builder-section">
+    <label class="atw-wall-builder-toggle">
+      <input type="checkbox" name="hasStrike">
+      <span>Add Strike</span>
+    </label>
+    <div class="atw-wall-builder-strike" hidden>
+      <div class="atw-wall-builder-grid">
+        <label>
+          <span>Strike name</span>
+          <input type="text" name="strikeName" value="Slam">
+        </label>
+        <label>
+          <span>Attack modifier</span>
+          <input type="text" name="strikeAttack" value="10">
+        </label>
+      </div>
+      <div class="atw-wall-builder-damage-head">
+        <span>Count</span>
+        <span>Die</span>
+        <span>Type</span>
+        <span>Category</span>
+      </div>
+      <div class="atw-wall-builder-damage-list">
+        {{{damageRowHtml}}}
+      </div>
+      <button type="button" class="atw-wall-builder-add-damage" data-action="atw-wall-add-damage-row">
+        <i class="fa-solid fa-plus"></i>
+        <span>Add Damage</span>
+      </button>
+    </div>
+  </section>
+</div>

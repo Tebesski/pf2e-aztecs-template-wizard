@@ -1,0 +1,58 @@
+<div class="atw-templates-compendium">
+   <div class="atw-tc-toolbar">
+      <a data-action="atw-new-blank" class="atw-tc-btn">
+         <i class="fa-solid fa-plus"></i>
+         {{newBlankLabel}}
+      </a>
+      <a data-action="atw-import-one" class="atw-tc-btn">
+         <i class="fa-solid fa-file-import"></i>
+         {{addNewLabel}}
+      </a>
+      <a data-action="atw-bulk-export" class="atw-tc-btn">
+         <i class="fa-solid fa-file-export"></i>
+         {{bulkExportLabel}}
+      </a>
+      <a data-action="atw-bulk-import" class="atw-tc-btn">
+         <i class="fa-solid fa-file-import"></i>
+         {{bulkImportLabel}}
+      </a>
+   </div>
+   <table class="atw-tc-table">
+      <thead>
+         <tr>
+            <th>{{nameLabel}}</th>
+            <th>{{slugLabel}}</th>
+            <th>{{behaviorCountLabel}}</th>
+            <th></th>
+         </tr>
+      </thead>
+      <tbody>
+         {{#if empty}}
+            <tr>
+               <td colspan="4" class="atw-tc-empty">{{emptyLabel}}</td>
+            </tr>
+         {{/if}}
+         {{#each entries}}
+            <tr data-id="{{id}}">
+               <td>{{name}}</td>
+               <td><code>{{slug}}</code></td>
+               <td>{{behaviorCount}}</td>
+               <td class="atw-tc-actions">
+                  <a data-action="atw-edit">
+                     <i class="fa-solid fa-pen-to-square"></i>
+                  </a>
+                  <a data-action="atw-edit-json">
+                     <i class="fa-solid fa-code"></i>
+                  </a>
+                  <a data-action="atw-export">
+                     <i class="fa-solid fa-file-export"></i>
+                  </a>
+                  <a data-action="atw-delete">
+                     <i class="fa-solid fa-trash"></i>
+                  </a>
+               </td>
+            </tr>
+         {{/each}}
+      </tbody>
+   </table>
+</div>

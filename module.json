@@ -1,0 +1,40 @@
+{
+   "id": "pf2e-aztecs-template-wizard",
+   "title": "PF2e Aztec's Template Wizard",
+   "description": "Automate template region behaviour and expiration for templates placed from PF2e spells, items, abilities, etc.",
+   "version": "#{VERSION}#",
+   "compatibility": {
+      "minimum": "14",
+      "verified": "14"
+   },
+   "socket": true,
+   "authors": [{ "name": "Aztec", "discord": "two.bears.high.fiving" }],
+   "packs": [
+      {
+         "name": "template-wizard-macros",
+         "label": "Template Wizard Macros",
+         "path": "packs/template-wizard-macros",
+         "type": "Macro",
+         "system": "pf2e"
+      }
+   ],
+   "relationships": {
+      "requires": [
+         {
+            "id": "socketlib",
+            "type": "module"
+         }
+      ]
+   },
+   "esmodules": ["scripts/module.mjs"],
+   "styles": ["styles/module.css"],
+   "languages": [{ "lang": "en", "name": "English", "path": "lang/en.json" }],
+   "flags": {
+      "pf2e-aztecs-template-wizard": {
+         "flagScope": "pf2e-aztecs-template-wizard"
+      }
+   },
+   "url": "#{URL}#",
+   "manifest": "#{MANIFEST}#",
+   "download": "#{DOWNLOAD}#"
+}
