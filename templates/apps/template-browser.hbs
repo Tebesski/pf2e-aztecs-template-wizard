@@ -1,0 +1,29 @@
+<div class="atw-template-browser">
+   <div class="atw-template-browser-toolbar">
+      <i class="fa-solid fa-magnifying-glass"></i>
+      <input type="search" class="atw-template-browser-search" placeholder="{{searchPlaceholder}}">
+   </div>
+   <ol class="atw-template-browser-list">
+      {{#if empty}}
+         <li class="atw-template-browser-empty">{{emptyLabel}}</li>
+      {{/if}}
+      {{#each entries}}
+         <li class="atw-template-browser-entry" data-entry-id="{{id}}" data-search="{{search}}">
+            <button type="button" class="atw-template-browser-main" data-action="atw-open-entry" data-entry-id="{{id}}">
+               <span class="atw-template-browser-name">{{name}}</span>
+               <code>{{slug}}</code>
+               <span class="atw-template-browser-count">{{behaviorCount}}</span>
+            </button>
+            <div class="atw-template-badges">
+               {{#each shapes}}
+                  <button type="button" class="atw-template-shape-badge" data-action="atw-place-template" data-entry-id="{{../id}}" data-shape-index="{{index}}">
+                     <i class="fa-solid {{icon}}"></i>
+                     <span>{{label}}</span>
+                     <strong>{{size}}</strong>
+                  </button>
+               {{/each}}
+            </div>
+         </li>
+      {{/each}}
+   </ol>
+</div>

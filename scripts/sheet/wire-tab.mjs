@@ -19,11 +19,12 @@ import { wireDamageControls } from "./wire-damage-controls.mjs"
 import { wireMediaControls } from "./wire-media-controls.mjs"
 import { wireFieldControls } from "./wire-field-controls.mjs"
 import { wireConsequenceControls } from "./wire-consequence-controls.mjs"
+import { wireHeighteningControls } from "./wire-heightening-controls.mjs"
 import {
    wireAutomationImportExportControls,
    wireBehaviorListControls,
 } from "./wire-panel-actions.mjs"
-export function wireTab($html, item, sheet) {
+export function wireTab($html, item, sheet, renderOptions = {}) {
    const $tab = $html.find(`.${TAB_CLASS}`)
    if (!$tab.length) return
 
@@ -98,6 +99,10 @@ export function wireTab($html, item, sheet) {
          const input = $tab.find('[data-atw-path="contiguous.count"]').get(0)
          if (input) input.disabled = !el.checked
       }
+      if (path === "placementRange.enabled") {
+         const input = $tab.find('[data-atw-path="placementRange.max"]').get(0)
+         if (input) input.disabled = !el.checked
+      }
    })
 
    wireTemplateShapeControls($tab, item)
@@ -116,11 +121,11 @@ export function wireTab($html, item, sheet) {
    })
 
    const COMPOUND_WIDGET_SELECTOR =
-      ".atw-tag-picker, .atw-uuid-list-wrap, .atw-tag-input, .atw-uuid-input-wrap, .atw-condition-picker, .atw-damage-list, .atw-tile-list, .atw-file-picker, .atw-dice-formula, .atw-duration, .atw-extra-roll-options, .atw-rule-list, .atw-consequence-list, .atw-save-consequence-list, .atw-choice-list, .atw-irw-tag-list"
+      ".atw-tag-picker, .atw-uuid-list-wrap, .atw-tag-input, .atw-uuid-input-wrap, .atw-condition-picker, .atw-damage-list, .atw-tile-list, .atw-file-picker, .atw-dice-formula, .atw-duration, .atw-extra-roll-options, .atw-rule-list, .atw-consequence-list, .atw-save-consequence-list, .atw-choice-list, .atw-irw-tag-list, .atw-restriction-list"
 
    $tab.on(
       "change input",
-      `[data-atw-sprop]:not(.atw-tag-picker):not(.atw-uuid-list-wrap):not(.atw-tag-input):not(.atw-uuid-input-wrap):not(.atw-condition-picker):not(.atw-damage-list):not(.atw-tile-list):not(.atw-file-picker):not(.atw-dice-formula):not(.atw-duration):not(.atw-extra-roll-options):not(.atw-rule-list):not(.atw-consequence-list):not(.atw-save-consequence-list):not(.atw-choice-list):not(.atw-irw-tag-list)`,
+      `[data-atw-sprop]:not(.atw-tag-picker):not(.atw-uuid-list-wrap):not(.atw-tag-input):not(.atw-uuid-input-wrap):not(.atw-condition-picker):not(.atw-damage-list):not(.atw-tile-list):not(.atw-file-picker):not(.atw-dice-formula):not(.atw-duration):not(.atw-extra-roll-options):not(.atw-rule-list):not(.atw-consequence-list):not(.atw-save-consequence-list):not(.atw-choice-list):not(.atw-irw-tag-list):not(.atw-restriction-list)`,
       async (ev) => {
          const el = ev.currentTarget
 
@@ -197,14 +202,22 @@ export function wireTab($html, item, sheet) {
                (f.dependsOn && key in f.dependsOn) ||
                (f.showWhen && f.showWhen.field === key),
          )
-         await saveAutomation(item, a)
-         if (affectsVisibility) refreshPanel($html, item, sheet)
+            await saveAutomation(item, a)
+         if (affectsVisibility) refreshPanel($html, item, sheet, renderOptions)
       },
    )
 
-   wireAutomationImportExportControls($tab, $html, item, sheet, refreshPanel)
+   wireAutomationImportExportControls($tab, $html, item, sheet, (root, doc, app) =>
+      refreshPanel(root, doc, app, renderOptions),
+   )
 
-   wireBehaviorListControls($tab, $html, item, sheet, refreshPanel)
+   wireBehaviorListControls($tab, $html, item, sheet, (root, doc, app) =>
+      refreshPanel(root, doc, app, renderOptions),
+   )
+
+   wireHeighteningControls($tab, $html, item, sheet, (root, doc, app) =>
+      refreshPanel(root, doc, app, renderOptions),
+   )
 
    wireUuidAndTagControls($tab, item)
 
@@ -232,13 +245,13 @@ export function wireTab($html, item, sheet) {
    setTimeout(() => bootstrapUuidResolutions(item), 0)
 }
 
-function refreshPanel($html, item, sheet) {
+function refreshPanel($html, item, sheet, renderOptions = {}) {
    const $tab = $html.find(`.${TAB_CLASS}`)
    if (!$tab.length) return
    const body = $tab.closest(".sheet-body, .tab-body")[0]
    const bodyScroll = body?.scrollTop ?? 0
    const tabScroll = $tab[0].scrollTop
-   $tab[0].innerHTML = renderTabContent(item)
+   $tab[0].innerHTML = renderTabContent(item, renderOptions)
    $tab[0].scrollTop = tabScroll
    if (body) body.scrollTop = bodyScroll
    setTimeout(() => bootstrapUuidResolutions(item), 0)

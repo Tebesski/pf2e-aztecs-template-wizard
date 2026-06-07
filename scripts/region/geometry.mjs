@@ -562,14 +562,14 @@ export function getRegionFootprint(region) {
       const override = getWizardShapeOverride(region)
       if (override) result = getRegionFootprintFromShapes(region, override)
    } catch (e) {
-      console.warn(`[${MODULE_ID}] Wizard shape override failed`, e)
+      undefined
    }
 
    if (!result) {
       try {
          result = getRegionFootprintFromShapes(region)
       } catch (e) {
-         console.warn(`[${MODULE_ID}] Shape-based footprint failed`, e)
+         undefined
       }
    }
 
@@ -632,10 +632,7 @@ export function getRegionFootprintFromPolygons(region) {
    }
 
    if (cells.length === 0) {
-      console.warn(
-         `[${MODULE_ID}] Footprint scan found 0 cells for region ${region.uuid}. polyBounds=`,
-         polyBounds,
-      )
+      undefined
       return null
    }
 

@@ -73,6 +73,7 @@
          "AddConsequence": "Add consequence",
          "RuleElements": "Rule Elements",
          "ChatMessageText": "Chat message text",
+         "ChatMessageDynamicVariables": "Dynamic variables: @actor.name, @token.name, @target.name, @targetToken.name, @sourceItem.name, @placer.name, @region.name",
          "ChatMessagePlaceholder": "Hello @actor.name! You stepped on the region.",
          "SaveType": "Save",
          "SkillType": "Skill",
@@ -506,6 +507,7 @@
          "Ellipse": "Ellipse",
          "Line": "Line",
          "Ring": "Ring",
+         "Square": "Square",
          "Emanation": "Emanation"
       },
 

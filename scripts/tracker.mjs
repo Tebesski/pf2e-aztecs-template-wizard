@@ -83,7 +83,7 @@ function persist() {
     regionUuid, ...v
   }));
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); }
-  catch (e) { console.warn(`[${MODULE_ID}] persist failed`, e); }
+  catch (e) { undefined; }
 }
 
 function readPosition() {
@@ -333,7 +333,7 @@ async function selectRegion(region) {
       layer.controlObject?.(region.object);
     }
   } catch (e) {
-    console.warn(`[${MODULE_ID}] Failed to select region`, e);
+    undefined;
   }
 }
 

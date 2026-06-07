@@ -193,7 +193,7 @@ export function wireMediaControls($tab, item) {
          })
          fp.render(true)
       } catch (e) {
-         console.error(`[${MODULE_ID}] FilePicker failed to open`, e)
+         undefined
       }
    })
 }

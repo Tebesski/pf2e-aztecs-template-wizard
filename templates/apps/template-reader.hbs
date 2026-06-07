@@ -1,0 +1,20 @@
+<div class="atw-template-reader">
+   <header class="atw-template-reader-header">
+      <div>
+         <h2>{{name}}</h2>
+         <code>{{slug}}</code>
+      </div>
+      <div class="atw-template-badges">
+         {{#each shapes}}
+            <button type="button" class="atw-template-shape-badge" data-action="atw-place-template" data-shape-index="{{index}}">
+               <i class="fa-solid {{icon}}"></i>
+               <span>{{label}}</span>
+               <strong>{{size}}</strong>
+            </button>
+         {{/each}}
+      </div>
+   </header>
+   <div class="tab atw-tab active atw-template-reader-body" data-tab="atw-template-reader">
+      {{{editorHtml}}}
+   </div>
+</div>

@@ -55,7 +55,7 @@ if (__api?.queueRollDiceCard) {
     });
     if (queued) return;
   } catch (e) {
-    console.warn("[atw] Roll Dice card queue failed", e);
+    undefined;
   }
 }
 const roll = await new Roll(formula).evaluate({ allowInteractive: false });
@@ -133,7 +133,7 @@ if (__grantFamily.length > 0) {
       await __dispatchRollGrantFamily(__grantFamily, token, srcItem, region, total);
     }
   } catch (e) {
-    console.error("[atw] roll grant-family dispatch failed", e);
+    undefined;
   }
 }
 
@@ -157,7 +157,7 @@ for (const cons of __other) {
     }
     await dispatchConsequence(cons, token, srcItem, region, total);
   } catch (e) {
-    console.error("[atw] consequence dispatch failed", cons, e);
+    undefined;
   }
 }
 
@@ -533,7 +533,7 @@ async function dispatchConsequence(c, token, srcItem, region, rollTotal) {
           result = roll?.options?.outcome ?? roll?.outcome ?? null;
         }
       } catch (e) {
-        console.error("[atw] save roll failed", e);
+        undefined;
         return;
       }
       const outcome = typeof result === "string" ? result : (result?.options?.outcome ?? result?.outcome ?? null);
@@ -543,7 +543,7 @@ async function dispatchConsequence(c, token, srcItem, region, rollTotal) {
         const wanted = sc?.outcome ?? "failure";
         if (wanted !== outcome) continue;
         try { await dispatchConsequence(sc, token, srcItem, region, rollTotal); }
-        catch (e) { console.error("[atw] nested save consequence failed", e); }
+        catch (e) { undefined; }
       }
       return;
     }

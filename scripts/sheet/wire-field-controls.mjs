@@ -1,12 +1,15 @@
-import { BEHAVIOR_CATALOG } from "../data.mjs"
 import { localize } from "../common/html.mjs"
 import { confirmDelete } from "../compendium/templates-compendium.mjs"
 import { readAutomation, saveAutomation } from "./automation-storage.mjs"
 import {
-   renderExtraRollOptions,
+   defaultRestrictionEntry,
+   normalizeRestrictionEntry,
+   refreshRestrictionList,
+   refreshTagPicker,
    refreshRuleElementList,
    updateRuleRowBadge,
 } from "./renderers.mjs"
+import { sanitizeRestrictTriggers } from "./restrict-trigger-controls.mjs"
 
 export function wireFieldControls($tab, item) {
    $tab.on("change input", ".atw-dice-formula input", async (ev) => {
@@ -64,7 +67,14 @@ export function wireFieldControls($tab, item) {
             cur.unit = input.value
          }
          foundry.utils.setProperty(entry.system, fieldKey, cur)
+         const restrictTriggerChanged = sanitizeRestrictTriggers(entry)
          await saveAutomation(item, a)
+         if (restrictTriggerChanged || entry.type === "restrictActions") {
+            const picker = li.querySelector(
+               '.atw-tag-picker[data-atw-sprop="triggers"]',
+            )
+            if (picker) refreshTagPicker(picker, item)
+         }
       },
    )
 
@@ -82,22 +92,13 @@ export function wireFieldControls($tab, item) {
       const cur =
          entry.system?.[fieldKey] && typeof entry.system[fieldKey] === "object"
             ? { ...entry.system[fieldKey] }
-            : { enabled: false, value: "" }
-      if (input.classList.contains("atw-extra-roll-options-enabled")) {
-         cur.enabled = input.checked
-      } else if (input.classList.contains("atw-extra-roll-options-input")) {
+            : { enabled: true, value: "" }
+      cur.enabled = true
+      if (input.classList.contains("atw-extra-roll-options-input")) {
          cur.value = input.value
       }
       foundry.utils.setProperty(entry.system, fieldKey, cur)
       await saveAutomation(item, a)
-
-      if (input.classList.contains("atw-extra-roll-options-enabled")) {
-         const def = BEHAVIOR_CATALOG.find((b) => b.type === entry.type)
-         const field = def?.fields.find((f) => f.key === fieldKey)
-         if (field) {
-            wrap.outerHTML = renderExtraRollOptions(field, cur)
-         }
-      }
    })
 
    $tab.on("click", ".atw-rule-list [data-action='add-rule']", async (ev) => {
@@ -193,5 +194,78 @@ export function wireFieldControls($tab, item) {
             ui.notifications?.warn(localize("PF2EATW.RuleElement.InvalidJson"))
          }
       },
+   )
+
+   $tab.on("click", ".atw-restriction-list [data-action='add-restriction']", async (ev) => {
+      ev.preventDefault()
+      const wrap = ev.currentTarget.closest(".atw-restriction-list")
+      const entryState = restrictionEntryState(item, wrap)
+      if (!entryState) return
+      const arr = Array.isArray(entryState.entry.system?.[entryState.fieldKey])
+         ? entryState.entry.system[entryState.fieldKey].map(normalizeRestrictionEntry)
+         : []
+      arr.push(defaultRestrictionEntry())
+      foundry.utils.setProperty(entryState.entry.system, entryState.fieldKey, arr)
+      await saveAutomation(item, entryState.automation)
+      refreshRestrictionList(wrap, item)
+   })
+
+   $tab.on("click", ".atw-restriction-list [data-action='remove-restriction']", async (ev) => {
+      ev.preventDefault()
+      const wrap = ev.currentTarget.closest(".atw-restriction-list")
+      const row = ev.currentTarget.closest(".atw-restriction-row")
+      const entryState = restrictionEntryState(item, wrap)
+      if (!entryState || !row) return
+      const index = Number(row.dataset.index)
+      const arr = Array.isArray(entryState.entry.system?.[entryState.fieldKey])
+         ? entryState.entry.system[entryState.fieldKey].map(normalizeRestrictionEntry)
+         : []
+      arr.splice(index, 1)
+      foundry.utils.setProperty(entryState.entry.system, entryState.fieldKey, arr.length ? arr : [defaultRestrictionEntry()])
+      await saveAutomation(item, entryState.automation)
+      refreshRestrictionList(wrap, item)
+   })
+
+   $tab.on(
+      "change input",
+      ".atw-restriction-list .atw-restriction-kind, .atw-restriction-list .atw-restriction-slug, .atw-restriction-list .atw-restriction-roll-options, .atw-restriction-list .atw-restriction-skill-select, .atw-restriction-list .atw-restriction-lore",
+      async (ev) => {
+         const wrap = ev.currentTarget.closest(".atw-restriction-list")
+         const entryState = restrictionEntryState(item, wrap)
+         if (!entryState) return
+         const rows = readRestrictionRows(wrap)
+         foundry.utils.setProperty(entryState.entry.system, entryState.fieldKey, rows)
+         await saveAutomation(item, entryState.automation)
+         if (
+            ev.currentTarget.classList.contains("atw-restriction-kind") ||
+            ev.currentTarget.classList.contains("atw-restriction-skill-select")
+         ) {
+            refreshRestrictionList(wrap, item)
+         }
+      },
+   )
+}
+
+function restrictionEntryState(item, wrap) {
+   if (!wrap) return null
+   const li = wrap.closest(".atw-behavior")
+   if (!li) return null
+   const id = li.dataset.id
+   const fieldKey = wrap.dataset.atwSprop
+   const automation = readAutomation(item)
+   const entry = automation.behaviors.find((behavior) => behavior.id === id)
+   if (!entry || !fieldKey) return null
+   return { automation, entry, fieldKey }
+}
+
+function readRestrictionRows(wrap) {
+   return Array.from(wrap.querySelectorAll(":scope > .atw-restriction-row")).map((row) =>
+      normalizeRestrictionEntry({
+         kind: row.querySelector(".atw-restriction-kind")?.value ?? "spell",
+         slug: row.querySelector(".atw-restriction-slug")?.value ?? "",
+         rollOptions: row.querySelector(".atw-restriction-roll-options")?.value ?? "",
+         skill: row.querySelector(".atw-restriction-skill-select")?.value ?? "athletics",
+         lore: row.querySelector(".atw-restriction-lore")?.value ?? "",
+      }),
    )
 }

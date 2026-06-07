@@ -6,6 +6,8 @@ import {
    normalizeTileAttachments,
 } from "./data.mjs"
 import { readAutomation } from "./sheet/automation-storage.mjs"
+import { resolveAutomationHeightening } from "./heightening.mjs"
+import { sourceItemForRegion } from "./compendium/template-entry-item.mjs"
 import { trackRegion } from "./tracker.mjs"
 import {
    executeAsGM,
@@ -22,8 +24,6 @@ import {
    forgetLifecycleContactsForRegion,
 } from "./region/effect-lifecycle.mjs"
 import {
-   getWizardShapeVariant,
-   getWizardShapeOverride,
    getRegionFootprint,
 } from "./region/geometry.mjs"
 import {
@@ -115,10 +115,7 @@ async function onCreateRegion(region, options, userId) {
                itemUuid: item?.uuid ?? null,
                ownerUserId: game.user.id,
             }).catch((e) => {
-               console.warn(
-                  `[${MODULE_ID}] failed to delegate region automation to GM`,
-                  e,
-               )
+               undefined
             })
          }, 250)
          return
@@ -135,10 +132,7 @@ async function onCreateRegion(region, options, userId) {
             itemUuid: item?.uuid ?? null,
             ownerUserId: game.user.id,
          }).catch((e) => {
-            console.warn(
-               `[${MODULE_ID}] failed to delegate region automation to GM`,
-               e,
-            )
+            undefined
          })
       }, 250)
       return
@@ -147,14 +141,12 @@ async function onCreateRegion(region, options, userId) {
    if (!isCurrentUserActiveGM()) return
    if (!createdByCurrentUser) {
       setTimeout(() => {
-         gmApplyRegionAutomation(region.uuid, { allowContiguous: false }).catch(
-            (e) => {
-               console.warn(
-                  `[${MODULE_ID}] failed to apply player-created region automation`,
-                  e,
-               )
-            },
-         )
+         gmApplyRegionAutomation(region.uuid, {
+            allowContiguous: false,
+            ownerUserId: userId,
+         }).catch((e) => {
+            undefined
+         })
       }, 300)
       return
    }
@@ -171,7 +163,7 @@ async function applyRegionAutomationDocument(
    if (region.getFlag(FLAG_SCOPE, "contiguousPlacement")?.pending) return false
 
    const item = itemUuid
-      ? await tryFromUuid(itemUuid)
+      ? (await tryFromUuid(itemUuid)) ?? (await resolveOriginItem(region))
       : await resolveOriginItem(region)
    if (!item) {
       return false
@@ -189,7 +181,7 @@ async function applyRegionAutomationDocument(
             { render: false },
          )
       } catch (e) {
-         console.warn(`[${MODULE_ID}] failed to preserve region ownership`, e)
+         undefined
       }
    }
    if (itemUuid && !region.getFlag(FLAG_SCOPE, "originUuid")) {
@@ -203,35 +195,15 @@ async function applyRegionAutomationDocument(
       return true
    }
 
-   await applyAutomationToRegion(region, item, automation)
+   await applyAutomationToRegion(region, item, automation, { ownerUserId })
    return true
 }
 
-async function applyAutomationToRegion(region, item, automation) {
+async function applyAutomationToRegion(region, item, automation, options = {}) {
    if (!region?.parent) return
    if (region.getFlag(FLAG_SCOPE, "managed")) return
-   const hasRingVariant = (automation.templateShape?.shapes ?? []).some(
-      (v) => v?.type === "ring",
-   )
+   automation = resolveAutomationHeightening(automation, item, { region })
    const deleteAfterPlacement = !automation.expiration?.enabled
-
-   try {
-      const chosenVariant = getWizardShapeVariant(region, automation)
-      const override = getWizardShapeOverride(region, automation)
-      if (override && chosenVariant?.type === "ring") {
-         const firstShape = region.shapes?.[0]
-         const placedType = firstShape?.type ?? null
-
-         if (override.type && override.type !== placedType) {
-            await region.update({ shapes: [override] })
-         }
-      }
-   } catch (e) {
-      console.warn(
-         `[${MODULE_ID}] failed to rewrite region shape to wizard variant`,
-         e,
-      )
-   }
 
    const behaviorData = buildBehaviorDataList(
       automation.behaviors,
@@ -243,11 +215,7 @@ async function applyAutomationToRegion(region, item, automation) {
       try {
          await region.createEmbeddedDocuments("RegionBehavior", behaviorData)
       } catch (err) {
-         console.error(
-            `[${MODULE_ID}] Failed to create RegionBehaviors`,
-            err,
-            behaviorData,
-         )
+         undefined
          ui.notifications?.error(
             game.i18n.format("PF2EATW.Error.BehaviorCreate", {
                name: item.name,
@@ -267,9 +235,12 @@ async function applyAutomationToRegion(region, item, automation) {
    await region.setFlag(FLAG_SCOPE, "managed", {
       itemUuid: item.uuid,
       itemName: trackerName,
+      ownerActorUuid: item.actor?.uuid ?? null,
+      ownerUserId: options.ownerUserId ?? null,
       automationId: automation.id ?? null,
       placedAt: game.time.worldTime,
       expiresAt: expSeconds !== null ? game.time.worldTime + expSeconds : null,
+      resolvedAutomation: foundry.utils.deepClone(automation),
    })
 
    if (expSeconds !== null) {
@@ -333,7 +304,7 @@ async function applyAutomationToRegion(region, item, automation) {
                true,
             )
          } catch (e2) {
-            console.error(`[${MODULE_ID}] Failed to play sound "${src}"`, e2)
+            undefined
          }
       }
    }
@@ -343,13 +314,13 @@ async function applyAutomationToRegion(region, item, automation) {
          includeTokenEnter: deleteAfterPlacement,
       })
    } catch (e) {
-      console.warn(`[${MODULE_ID}] on-place enter dispatch failed`, e)
+      undefined
    }
 
    try {
       await applyLifecycleInitialStates(region)
    } catch (e) {
-      console.warn(`[${MODULE_ID}] lifecycle initial dispatch failed`, e)
+      undefined
    }
    scheduleLifecycleInitialStateCatchup(region)
 
@@ -369,17 +340,12 @@ async function applyAutomationToRegion(region, item, automation) {
       try {
          await region.update(update, { render: false })
       } catch (e) {
-         console.warn(
-            `[${MODULE_ID}] Failed to apply advanced overrides; retrying per field`,
-            e,
-         )
+         undefined
          for (const [k, v] of Object.entries(update)) {
             try {
                await region.update({ [k]: v }, { render: false })
             } catch (e2) {
-               console.warn(
-                  `[${MODULE_ID}]   skipped ${k}=${v}: ${e2?.message ?? e2}`,
-               )
+               undefined
             }
          }
       }
@@ -389,7 +355,7 @@ async function applyAutomationToRegion(region, item, automation) {
       try {
          await promptAttachRegionToToken(region)
       } catch (e) {
-         console.warn(`[${MODULE_ID}] Region-attach prompt failed`, e)
+         undefined
       }
    }
 
@@ -444,10 +410,7 @@ async function applyEnterEventsForTokensInsideRegion(
       try {
          fn = new AsyncFunction("event", "region", "scene", "behavior", src)
       } catch (e) {
-         console.warn(
-            `[${MODULE_ID}] failed to compile behavior source for on-place dispatch`,
-            e,
-         )
+         undefined
          continue
       }
       for (const tokenDoc of insideTokens) {
@@ -458,10 +421,7 @@ async function applyEnterEventsForTokensInsideRegion(
          try {
             await fn(syntheticEvent, region, scene, behavior)
          } catch (e) {
-            console.warn(
-               `[${MODULE_ID}] on-place enter script threw for token ${tokenDoc.name}`,
-               e,
-            )
+            undefined
          }
       }
    }
@@ -487,10 +447,7 @@ async function restoreReversibleRemovalsForRegion(actor, regionUuid) {
       try {
          await actor.createEmbeddedDocuments("Item", creates)
       } catch (e) {
-         console.warn(
-            `[${MODULE_ID}] failed to restore reversible removals for ${actor.name}`,
-            e,
-         )
+         undefined
       }
    }
    const next = foundry.utils.deepClone(store)
@@ -548,7 +505,7 @@ async function onDeleteRegion(region, options, userId) {
             attached.map((d) => d.id),
          )
       } catch (e) {
-         console.error(`[${MODULE_ID}] Failed to delete attached ${name}`, e)
+         undefined
       }
    }
 
@@ -569,15 +526,12 @@ async function onDeleteRegion(region, options, userId) {
                   ours.map((e) => e.id),
                )
             } catch (e) {
-               console.warn(
-                  `[${MODULE_ID}] failed to clean addIRW effects from ${actor.name}`,
-                  e,
-               )
+               undefined
             }
          }
       }
    } catch (e) {
-      console.warn(`[${MODULE_ID}] addIRW cleanup loop failed`, e)
+      undefined
    }
 
    try {
@@ -598,20 +552,20 @@ async function onDeleteRegion(region, options, userId) {
                   lifecycleEffects.map((e) => e.id),
                )
             } catch (e) {
-               console.warn(
-                  `[${MODULE_ID}] failed to clean lifecycle effects from ${actor.name}`,
-                  e,
-               )
+               undefined
             }
          }
          await restoreReversibleRemovalsForRegion(actor, uuid)
       }
    } catch (e) {
-      console.warn(`[${MODULE_ID}] lifecycle cleanup loop failed`, e)
+      undefined
    }
 }
 
 async function resolveOriginItem(region) {
+   const compendiumItem = await sourceItemForRegion(region, tryFromUuid)
+   if (compendiumItem) return compendiumItem
+
    const ours = region.getFlag(FLAG_SCOPE, "originUuid")
    if (ours) return tryFromUuid(ours)
 
@@ -647,15 +601,12 @@ async function quietlyDeleteRegion(region) {
          })
       }
    } catch (e) {
-      console.warn(
-         `[${MODULE_ID}] Failed to disable behaviors before deletion`,
-         e,
-      )
+      undefined
    }
    try {
       await region.delete()
    } catch (e) {
-      console.error(`[${MODULE_ID}] Failed to delete region`, e)
+      undefined
    }
 }
 

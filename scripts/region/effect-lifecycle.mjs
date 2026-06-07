@@ -1,6 +1,10 @@
 import { FLAG_SCOPE, MODULE_ID } from "../data.mjs"
 import { executeAsGM } from "../runtime/index.mjs"
-import { getActiveTemplateShapeType, getRegionFootprint } from "./geometry.mjs"
+import {
+   getActiveTemplateShapeType,
+   getRegionFootprint,
+   getWizardShapeOverride,
+} from "./geometry.mjs"
 import { tryDocumentFromUuid } from "./documents.mjs"
 import {
    getTokenGeometry,
@@ -13,14 +17,10 @@ export function registerEffectLifecycleHooks() {
    Hooks.on("preUpdateToken", onPreUpdateTokenForEffectLifecycle)
    Hooks.on("updateToken", onUpdateTokenForEffectLifecycle)
    Hooks.on("refreshToken", onRefreshTokenForEffectLifecycle)
-   Hooks.on("combatTurnChange", onCombatTurnChange)
-   Hooks.on("combatTurn", onCombatLegacyTurn)
-   Hooks.on("combatRound", onCombatLegacyRound)
    Hooks.on("pf2e.startTurn", onPf2eStartTurn)
    Hooks.on("pf2e.endTurn", onPf2eEndTurn)
    startEffectLifecycleTokenMonitor()
 }
-const COMBAT_TURN_TICK = new WeakMap()
 const TOKEN_PRE_UPDATE_STATE = new Map()
 const LIFECYCLE_CONTACT_STATE = new Map()
 const LIFECYCLE_CATCHUP_TIMERS = new Map()
@@ -34,6 +34,63 @@ const LIFECYCLE_MONITOR_INTERVAL_MS = 350
 const ADJACENT_TURN_DEDUPE_MS = 300
 const REMOTE_LIFECYCLE_GEOMETRY_MS = 2000
 const LIFECYCLE_DUPLICATE_EVENT_MS = 900
+
+function debugTurn(_label, _payload = {}) {}
+
+function debugLifecycle(label, payload = {}) {
+   if (!globalThis.atwDebugLifecycle && !globalThis.atwDebugContact) return
+   console.info(`[atw lifecycle] ${label}`, payload)
+}
+
+function debugContact(label, payload = {}) {
+   if (!globalThis.atwDebugContact && !globalThis.atwDebugLifecycle) return
+   console.info(`[atw contact] ${label}`, payload)
+}
+
+function tokenDebug(tokenDoc) {
+   const doc = tokenDoc?.document ?? tokenDoc
+   return doc
+      ? {
+           id: doc.id,
+           uuid: doc.uuid,
+           name: doc.name,
+           actor: doc.actor?.name,
+           x: doc.x,
+           y: doc.y,
+           width: doc.width,
+           height: doc.height,
+        }
+      : null
+}
+
+function combatantDebug(combatant) {
+   return combatant
+      ? {
+           id: combatant.id,
+           tokenId: combatant.tokenId,
+           actor: combatant.actor?.name,
+           token: combatant.token?.name,
+           turn: combatant.parent?.turn,
+           round: combatant.parent?.round,
+        }
+      : null
+}
+
+function behaviorDebug(behavior) {
+   const flags = behavior?.flags?.[FLAG_SCOPE] ?? {}
+   return behavior
+      ? {
+           id: behavior.id,
+           type: behavior.type,
+           disabled: !!behavior.disabled,
+           events: behavior.system?.events ?? [],
+           behaviorType: flags.behaviorType,
+           triggers: flags.triggers ?? [],
+           triggerGroupKey: flags.triggerGroupKey ?? "",
+           hasSource: !!behavior.system?.source,
+        }
+      : null
+}
 
 export function isCurrentUserActiveGM() {
    const activeGM = game.users?.activeGM
@@ -77,6 +134,44 @@ export function lifecycleAdjacentActive(region, contact, triggers) {
    return getActiveTemplateShapeType(region) === "line"
 }
 
+function lifecycleWithinActive(contact, triggers) {
+   return !!contact?.inside && Array.isArray(triggers) && triggers.includes("whileWithin")
+}
+
+function lifecycleBehaviorActive(region, contact, triggers) {
+   return (
+      lifecycleWithinActive(contact, triggers) ||
+      (Array.isArray(triggers) &&
+         triggers.includes("whileAdjacent") &&
+         lifecycleAdjacentActive(region, contact, triggers))
+   )
+}
+
+function lifecycleEnterEvent(region, contact, triggers) {
+   if (lifecycleWithinActive(contact, triggers)) return "tokenEnter"
+   if (
+      Array.isArray(triggers) &&
+      triggers.includes("whileAdjacent") &&
+      lifecycleAdjacentActive(region, contact, triggers)
+   )
+      return "atwAdjacentEnter"
+   return null
+}
+
+function lifecycleExitEvent(triggers) {
+   return Array.isArray(triggers) && triggers.includes("whileWithin")
+      ? "atwWithinExit"
+      : "atwAdjacentExit"
+}
+
+function lifecycleTriggerGroupKey(behavior, triggers) {
+   return (
+      behavior.flags?.[FLAG_SCOPE]?.triggerGroupKey ??
+      ((Array.isArray(triggers) ? triggers.slice().sort().join("|") : "") ||
+         "default")
+   )
+}
+
 export function actorHasLifecycleState(actor, region, triggerGroupKey) {
    if (!actor || !region?.uuid || !triggerGroupKey) return false
    const hasParent = actor.items?.some?.(
@@ -86,13 +181,82 @@ export function actorHasLifecycleState(actor, region, triggerGroupKey) {
          i.flags?.[MODULE_ID]?.triggerGroupKey === triggerGroupKey &&
          i.flags?.[MODULE_ID]?.effectLifecycle,
    )
-   if (hasParent) return true
+   const hasRestriction = actor.items?.some?.((i) => {
+      const flags = i.flags?.[MODULE_ID] ?? {}
+      return (
+         flags.restrictionEffect &&
+         flags.appliedByRegion === region.uuid &&
+         (flags.effectLifecycle || !flags.triggerGroupKey) &&
+         (!flags.triggerGroupKey || flags.triggerGroupKey === triggerGroupKey)
+      )
+   })
+   if (hasParent || hasRestriction) return true
    const removals = actor.flags?.[MODULE_ID]?.reversibleRemovals
    return !!removals?.[region.uuid]?.[triggerGroupKey]
 }
 
 export function regionBehaviorList(region) {
-   return Array.from(region?.behaviors ?? [])
+   return collectionValues(region?.behaviors)
+}
+
+function isExecuteScriptBehavior(behavior) {
+   const type = String(behavior?.type ?? "")
+   return type === "executeScript" || type.endsWith(".executeScript")
+}
+
+function collectionValues(collection) {
+   if (!collection) return []
+   if (Array.isArray(collection)) return collection.filter(Boolean)
+   if (Array.isArray(collection.contents)) return collection.contents.filter(Boolean)
+   if (typeof collection.values === "function") return Array.from(collection.values()).filter(Boolean)
+   if (typeof collection[Symbol.iterator] === "function") return Array.from(collection).filter(Boolean)
+   return Object.values(collection).filter((value) => value && typeof value === "object")
+}
+
+function sceneRegionList(scene) {
+   const sceneRegions = collectionValues(scene?.regions)
+   const canvasScene = canvas?.scene
+   const useCanvasFallback =
+      canvasScene && (!scene || canvasScene.id === scene.id || sceneRegions.length === 0)
+   const canvasRegions =
+      useCanvasFallback
+         ? collectionValues(canvasScene.regions)
+         : []
+   const placeableRegions =
+      useCanvasFallback
+         ? collectionValues(canvas?.regions?.placeables).map((placeable) => placeable.document ?? placeable)
+         : []
+   const seen = new Set()
+   const out = []
+   for (const region of [...sceneRegions, ...canvasRegions, ...placeableRegions]) {
+      const key = region?.uuid ?? region?.id
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      out.push(region)
+   }
+   return out
+}
+
+function sceneTokenList(scene) {
+   const sceneTokens = collectionValues(scene?.tokens)
+   const canvasScene = canvas?.scene
+   const canvasTokens =
+      canvasScene && (!scene || canvasScene.id === scene.id)
+         ? collectionValues(canvasScene.tokens)
+         : []
+   const placeableTokens =
+      canvasScene && (!scene || canvasScene.id === scene.id)
+         ? collectionValues(canvas?.tokens?.placeables).map((placeable) => placeable.document ?? placeable)
+         : []
+   const seen = new Set()
+   const out = []
+   for (const token of [...sceneTokens, ...canvasTokens, ...placeableTokens]) {
+      const key = token?.uuid ?? token?.id
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      out.push(token)
+   }
+   return out
 }
 
 function rememberRemoteLifecycleGeometry(tokenDoc, geometry) {
@@ -121,7 +285,7 @@ function recentRemoteLifecycleGeometry(tokenDoc) {
 
 function regionHasEffectLifecycle(region) {
    return regionBehaviorList(region).some((behavior) => {
-      if (behavior.disabled || behavior.type !== "executeScript") return false
+      if (behavior.disabled || !isExecuteScriptBehavior(behavior)) return false
       const triggers = behavior.flags?.[FLAG_SCOPE]?.triggers ?? []
       return (
          Array.isArray(triggers) &&
@@ -132,7 +296,7 @@ function regionHasEffectLifecycle(region) {
 }
 
 function sceneHasEffectLifecycleRegions(scene) {
-   return Array.from(scene?.regions ?? []).some((region) =>
+   return sceneRegionList(scene).some((region) =>
       regionHasEffectLifecycle(region),
    )
 }
@@ -141,7 +305,7 @@ function startEffectLifecycleTokenMonitor() {
    if (LIFECYCLE_MONITOR_TIMER) return
    LIFECYCLE_MONITOR_TIMER = setInterval(() => {
       scanEffectLifecycleTokenPositions().catch((e) => {
-         console.warn(`[${MODULE_ID}] lifecycle token monitor failed`, e)
+         undefined
       })
    }, LIFECYCLE_MONITOR_INTERVAL_MS)
 }
@@ -156,7 +320,7 @@ async function scanEffectLifecycleTokenPositions() {
    const currentKeys = new Set()
    const tokens = canvas.tokens?.placeables?.length
       ? canvas.tokens.placeables
-      : Array.from(scene.tokens ?? [])
+      : sceneTokenList(scene)
    for (const tokenDoc of tokens) {
       if (!isActiveGM && !canRequestLifecycleCatchup(tokenDoc)) continue
       const key = tokenTrackingKey(tokenDoc)
@@ -177,35 +341,14 @@ async function scanEffectLifecycleTokenPositions() {
    }
 }
 
-function shouldHandleCombatTick(combat, tag) {
-   if (!combat) return false
-   const seen = COMBAT_TURN_TICK.get(combat) ?? new Set()
-   if (seen.has(tag)) return false
-   seen.add(tag)
-   COMBAT_TURN_TICK.set(combat, seen)
-
-   setTimeout(() => {
-      const s = COMBAT_TURN_TICK.get(combat)
-      if (s) s.delete(tag)
-   }, 100)
-   return true
-}
-
-function resolveCombatStateTokens(scene, stateOrCombatant, combat = null) {
-   if (!stateOrCombatant || !scene) return []
-   if (typeof stateOrCombatant.tokenId === "string") {
-      const token = scene.tokens.get(stateOrCombatant.tokenId)
-      return token ? [token] : []
-   }
-   if (typeof stateOrCombatant.combatantId === "string") {
-      const combatant = combat?.combatants?.get?.(stateOrCombatant.combatantId)
-      return resolveCombatantTokens(scene, combatant)
-   }
-   return resolveCombatantTokens(scene, stateOrCombatant)
-}
-
 function resolveCombatantTokens(scene, combatantOrToken) {
-   if (!combatantOrToken || !scene) return []
+   if (!combatantOrToken || !scene) {
+      debugTurn("resolve combatant tokens skipped", {
+         hasCombatant: !!combatantOrToken,
+         scene: scene?.id,
+      })
+      return []
+   }
    const tokens = []
    const add = (tokenLike) => {
       const tokenDoc = resolveSceneToken(scene, tokenLike)
@@ -216,17 +359,35 @@ function resolveCombatantTokens(scene, combatantOrToken) {
    }
    add(combatantOrToken.token)
    add(combatantOrToken)
-   return uniqueTokenDocuments(tokens)
+   const resolved = uniqueTokenDocuments(tokens)
+   debugTurn("resolve combatant tokens", {
+      combatant: combatantDebug(combatantOrToken),
+      resolved: resolved.map(tokenDebug),
+   })
+   return resolved
 }
 
 function resolveSceneToken(scene, tokenLike) {
    if (!tokenLike) return null
+   if (typeof tokenLike.tokenId === "string") {
+      const token = getSceneToken(scene, tokenLike.tokenId)
+      if (token) return token
+   }
    const doc = tokenLike.document ?? tokenLike
    if (doc.parent === scene && doc.id) return doc
-   if (typeof doc.id === "string") return scene.tokens.get(doc.id) ?? null
-   if (typeof tokenLike.tokenId === "string")
-      return scene.tokens.get(tokenLike.tokenId) ?? null
+   if (doc !== tokenLike && typeof doc.tokenId === "string") {
+      const token = getSceneToken(scene, doc.tokenId)
+      if (token) return token
+   }
+   if (typeof doc.id === "string") return getSceneToken(scene, doc.id)
    return null
+}
+
+function getSceneToken(scene, id) {
+   if (!id) return null
+   const direct = scene?.tokens?.get?.(id)
+   if (direct) return direct
+   return sceneTokenList(scene).find((token) => token?.id === id) ?? null
 }
 
 function uniqueTokenDocuments(tokens) {
@@ -241,6 +402,27 @@ function uniqueTokenDocuments(tokens) {
    return out
 }
 
+function actorKeyForToken(tokenDoc) {
+   const doc = tokenDoc?.document ?? tokenDoc
+   const actor = doc?.actor
+   return actor?.uuid ?? actor?.id ?? null
+}
+
+function resolveTokenForRegion(region, tokenDoc) {
+   const scene = region?.parent
+   const doc = tokenDoc?.document ?? tokenDoc
+   if (!scene || !doc) return doc ?? tokenDoc
+   if (doc.parent === scene) return doc
+   const byId = getSceneToken(scene, doc.id)
+   if (byId) return byId
+   const actorKey = actorKeyForToken(doc)
+   if (!actorKey) return doc
+   return (
+      sceneTokenList(scene).find((candidate) => actorKeyForToken(candidate) === actorKey) ??
+      doc
+   )
+}
+
 function shouldDispatchAdjacentTurn(region, behavior, tokenDoc, eventName) {
    const key = [
       region?.uuid ?? region?.id,
@@ -250,7 +432,15 @@ function shouldDispatchAdjacentTurn(region, behavior, tokenDoc, eventName) {
    ].join("|")
    const now = Date.now()
    const prior = ADJACENT_TURN_RECENT.get(key) ?? 0
-   if (now - prior < ADJACENT_TURN_DEDUPE_MS) return false
+   if (now - prior < ADJACENT_TURN_DEDUPE_MS) {
+      debugTurn("skip duplicate dispatch", {
+         region: region?.uuid,
+         behavior: behaviorDebug(behavior),
+         token: tokenDebug(tokenDoc),
+         eventName,
+      })
+      return false
+   }
    ADJACENT_TURN_RECENT.set(key, now)
    setTimeout(() => {
       if (ADJACENT_TURN_RECENT.get(key) === now)
@@ -259,57 +449,48 @@ function shouldDispatchAdjacentTurn(region, behavior, tokenDoc, eventName) {
    return true
 }
 
-async function onCombatTurnChange(combat, prior, current) {
-   if (!game.user.isGM) return
-   if (game.user.id !== game.users.activeGM?.id) return
-   if (!shouldHandleCombatTick(combat, "turnChange")) return
-   const scene = combat?.scene ?? game.scenes.get(combat?.sceneId)
-   if (!scene) return
-
-   const priorTokenDocs = resolveCombatStateTokens(scene, prior, combat)
-   const currentTokenDocs = resolveCombatStateTokens(scene, current, combat)
-
-   await dispatchCombatTurnTriggers(scene, priorTokenDocs, currentTokenDocs)
-}
-
-async function onCombatLegacyTurn(combat, updateData, updateOptions) {
-   if (!game.user.isGM) return
-   if (game.user.id !== game.users.activeGM?.id) return
-   if (!shouldHandleCombatTick(combat, "legacyTurn")) return
-   const scene = combat?.scene ?? game.scenes.get(combat?.sceneId)
-   if (!scene) return
-
-   const turns = combat?.turns ?? []
-   const newTurn = updateData?.turn ?? combat?.turn ?? 0
-   const oldTurn = combat?.previous?.turn ?? Math.max(0, newTurn - 1)
-   const priorCombatant = turns[oldTurn]
-   const currentCombatant = turns[newTurn]
-   const priorTokenDocs = resolveCombatantTokens(scene, priorCombatant)
-   const currentTokenDocs = resolveCombatantTokens(scene, currentCombatant)
-
-   await dispatchCombatTurnTriggers(scene, priorTokenDocs, currentTokenDocs)
-}
-
-async function onCombatLegacyRound(combat, updateData, updateOptions) {
-   if (!game.user.isGM) return
-   if (game.user.id !== game.users.activeGM?.id) return
-   if (!shouldHandleCombatTick(combat, "legacyRound")) return
-}
-
 async function onPf2eStartTurn(combatant, encounter, userId) {
-   if (!game.user.isGM) return
-   if (game.user.id !== game.users.activeGM?.id) return
-   const scene = encounter?.scene ?? game.scenes.get(combatant?.sceneId)
-   if (!scene) return
+   debugTurn("hook pf2e.startTurn", {
+      activeGM: game.users?.activeGM?.id,
+      currentUser: game.user?.id,
+      hookUser: userId,
+      isActiveGM: isCurrentUserActiveGM(),
+      combatant: combatantDebug(combatant),
+      encounter: encounter?.id,
+   })
+   if (!isCurrentUserActiveGM()) return
+   const scene = encounter?.scene ?? game.scenes.get(combatant?.sceneId) ?? canvas?.scene
+   if (!scene) {
+      debugTurn("pf2e.startTurn missing scene", {
+         combatant: combatantDebug(combatant),
+         sceneId: combatant?.sceneId,
+         encounter: encounter?.id,
+      })
+      return
+   }
    const currentTokenDocs = resolveCombatantTokens(scene, combatant)
    await dispatchCombatTurnTriggers(scene, [], currentTokenDocs)
 }
 
 async function onPf2eEndTurn(combatant, encounter, userId) {
-   if (!game.user.isGM) return
-   if (game.user.id !== game.users.activeGM?.id) return
-   const scene = encounter?.scene ?? game.scenes.get(combatant?.sceneId)
-   if (!scene) return
+   debugTurn("hook pf2e.endTurn", {
+      activeGM: game.users?.activeGM?.id,
+      currentUser: game.user?.id,
+      hookUser: userId,
+      isActiveGM: isCurrentUserActiveGM(),
+      combatant: combatantDebug(combatant),
+      encounter: encounter?.id,
+   })
+   if (!isCurrentUserActiveGM()) return
+   const scene = encounter?.scene ?? game.scenes.get(combatant?.sceneId) ?? canvas?.scene
+   if (!scene) {
+      debugTurn("pf2e.endTurn missing scene", {
+         combatant: combatantDebug(combatant),
+         sceneId: combatant?.sceneId,
+         encounter: encounter?.id,
+      })
+      return
+   }
    const priorTokenDocs = resolveCombatantTokens(scene, combatant)
    await dispatchCombatTurnTriggers(scene, priorTokenDocs, [])
 }
@@ -329,18 +510,79 @@ async function dispatchCombatTurnTriggers(
       : currentTokenDocs
         ? [currentTokenDocs]
         : []
-   for (const region of scene.regions) {
+   debugTurn("dispatch combat turn triggers", {
+      scene: scene?.id,
+      regions: sceneRegionList(scene).length,
+      sceneRegionCount: collectionValues(scene?.regions).length,
+      canvasScene: canvas?.scene?.id,
+      canvasRegionCount: sceneRegionList(canvas?.scene).length,
+      priorTokens: priorTokenDocs.map(tokenDebug),
+      currentTokens: currentTokenDocs.map(tokenDebug),
+   })
+   for (const region of sceneRegionList(scene)) {
       const behaviors = regionBehaviorList(region)
+      debugTurn("inspect region turn behaviors", {
+         region: region.uuid,
+         name: region.name,
+         managed: !!region.getFlag?.(FLAG_SCOPE, "managed"),
+         behaviorCount: behaviors.length,
+         behaviors: behaviors.map(behaviorDebug),
+      })
       if (!behaviors.length) continue
       for (const behavior of behaviors) {
-         if (behavior.disabled) continue
-         if (behavior.type !== "executeScript") continue
+         if (behavior.disabled) {
+            debugTurn("skip disabled behavior", {
+               region: region.uuid,
+               behavior: behaviorDebug(behavior),
+            })
+            continue
+         }
+         if (!isExecuteScriptBehavior(behavior)) {
+            debugTurn("skip non-script behavior", {
+               region: region.uuid,
+               behavior: behaviorDebug(behavior),
+            })
+            continue
+         }
          const triggers = behavior.flags?.[FLAG_SCOPE]?.triggers ?? []
-         if (!Array.isArray(triggers)) continue
+         if (!Array.isArray(triggers)) {
+            debugTurn("skip behavior without trigger array", {
+               region: region.uuid,
+               behavior: behaviorDebug(behavior),
+               triggers,
+            })
+            continue
+         }
 
          const skipInsideForEnd = triggers.includes("tokenTurnEnd")
          const skipInsideForStart = triggers.includes("tokenTurnStart")
+         debugTurn("evaluate turn behavior", {
+            region: region.uuid,
+            behavior: behaviorDebug(behavior),
+            skipInsideForEnd,
+            skipInsideForStart,
+         })
 
+         if (triggers.includes("tokenTurnEnd")) {
+            for (const priorTokenDoc of priorTokenDocs) {
+               await maybeDispatchInsideTurn(
+                  region,
+                  behavior,
+                  priorTokenDoc,
+                  "tokenTurnEnd",
+               )
+            }
+         }
+         if (triggers.includes("tokenTurnStart")) {
+            for (const currentTokenDoc of currentTokenDocs) {
+               await maybeDispatchInsideTurn(
+                  region,
+                  behavior,
+                  currentTokenDoc,
+                  "tokenTurnStart",
+               )
+            }
+         }
          if (triggers.includes("tokenAdjacentTurnEnd")) {
             for (const priorTokenDoc of priorTokenDocs) {
                await maybeDispatchAdjacentTurn(
@@ -367,6 +609,94 @@ async function dispatchCombatTurnTriggers(
    }
 }
 
+async function maybeDispatchInsideTurn(region, behavior, tokenDoc, eventName) {
+   try {
+      const scene = region.parent
+      if (!scene) {
+         debugTurn("inside turn missing scene", {
+            region: region?.uuid,
+            behavior: behaviorDebug(behavior),
+            token: tokenDebug(tokenDoc),
+            eventName,
+         })
+         return
+      }
+      const regionTokenDoc = resolveTokenForRegion(region, tokenDoc)
+      const contact = tokenRegionContact(region, regionTokenDoc)
+      debugTurn("inside turn contact", {
+         region: region.uuid,
+         behavior: behaviorDebug(behavior),
+         token: tokenDebug(regionTokenDoc),
+         originalToken: tokenDebug(tokenDoc),
+         eventName,
+         contact,
+      })
+      if (!contact.inside) {
+         debugTurn("inside turn skipped outside", {
+            region: region.uuid,
+            behavior: behaviorDebug(behavior),
+            token: tokenDebug(regionTokenDoc),
+            originalToken: tokenDebug(tokenDoc),
+            eventName,
+            contact,
+         })
+         return
+      }
+      if (!shouldDispatchAdjacentTurn(region, behavior, regionTokenDoc, eventName)) {
+         debugTurn("inside turn skipped dedupe", {
+            region: region.uuid,
+            behavior: behaviorDebug(behavior),
+            token: tokenDebug(regionTokenDoc),
+            originalToken: tokenDebug(tokenDoc),
+            eventName,
+         })
+         return
+      }
+
+      const AsyncFunction = (async () => {}).constructor
+      const src = behavior.system?.source
+      if (!src) {
+         debugTurn("inside turn missing source", {
+            region: region.uuid,
+            behavior: behaviorDebug(behavior),
+            token: tokenDebug(regionTokenDoc),
+            originalToken: tokenDebug(tokenDoc),
+            eventName,
+         })
+         return
+      }
+      let fn
+      try {
+         fn = new AsyncFunction("event", "region", "scene", "behavior", src)
+      } catch (e) {
+         undefined
+         return
+      }
+      const syntheticEvent = { name: eventName, data: { token: regionTokenDoc } }
+      try {
+         debugTurn("inside turn execute script", {
+            region: region.uuid,
+            behavior: behaviorDebug(behavior),
+            token: tokenDebug(regionTokenDoc),
+            originalToken: tokenDebug(tokenDoc),
+            eventName,
+         })
+         await fn(syntheticEvent, region, scene, behavior)
+         debugTurn("inside turn script completed", {
+            region: region.uuid,
+            behavior: behaviorDebug(behavior),
+            token: tokenDebug(regionTokenDoc),
+            originalToken: tokenDebug(tokenDoc),
+            eventName,
+         })
+      } catch (e) {
+         undefined
+      }
+   } catch (e) {
+      undefined
+   }
+}
+
 async function maybeDispatchAdjacentTurn(
    region,
    behavior,
@@ -376,33 +706,102 @@ async function maybeDispatchAdjacentTurn(
 ) {
    try {
       const scene = region.parent
-      if (!scene) return
-      const contact = tokenRegionContact(region, tokenDoc)
-      if (contact.inside && skipInside) return
+      if (!scene) {
+         debugTurn("adjacent turn missing scene", {
+            region: region?.uuid,
+            behavior: behaviorDebug(behavior),
+            token: tokenDebug(tokenDoc),
+            eventName,
+            skipInside,
+         })
+         return
+      }
+      const regionTokenDoc = resolveTokenForRegion(region, tokenDoc)
+      const contact = tokenRegionContact(region, regionTokenDoc)
+      debugTurn("adjacent turn contact", {
+         region: region.uuid,
+         behavior: behaviorDebug(behavior),
+         token: tokenDebug(regionTokenDoc),
+         originalToken: tokenDebug(tokenDoc),
+         eventName,
+         skipInside,
+         contact,
+      })
+      if (contact.inside && skipInside) {
+         debugTurn("adjacent turn skipped inside handled elsewhere", {
+            region: region.uuid,
+            behavior: behaviorDebug(behavior),
+            token: tokenDebug(regionTokenDoc),
+            originalToken: tokenDebug(tokenDoc),
+            eventName,
+            contact,
+         })
+         return
+      }
       const touches = contact.inside || contact.adjacent
-      if (!touches) return
-      if (!shouldDispatchAdjacentTurn(region, behavior, tokenDoc, eventName)) {
+      if (!touches) {
+         debugTurn("adjacent turn skipped no contact", {
+            region: region.uuid,
+            behavior: behaviorDebug(behavior),
+            token: tokenDebug(regionTokenDoc),
+            originalToken: tokenDebug(tokenDoc),
+            eventName,
+            contact,
+         })
+         return
+      }
+      if (!shouldDispatchAdjacentTurn(region, behavior, regionTokenDoc, eventName)) {
+         debugTurn("adjacent turn skipped dedupe", {
+            region: region.uuid,
+            behavior: behaviorDebug(behavior),
+            token: tokenDebug(regionTokenDoc),
+            originalToken: tokenDebug(tokenDoc),
+            eventName,
+         })
          return
       }
 
       const AsyncFunction = (async () => {}).constructor
       const src = behavior.system?.source
-      if (!src) return
+      if (!src) {
+         debugTurn("adjacent turn missing source", {
+            region: region.uuid,
+            behavior: behaviorDebug(behavior),
+            token: tokenDebug(regionTokenDoc),
+            originalToken: tokenDebug(tokenDoc),
+            eventName,
+         })
+         return
+      }
       let fn
       try {
          fn = new AsyncFunction("event", "region", "scene", "behavior", src)
       } catch (e) {
-         console.warn(`[${MODULE_ID}] adjacent-turn script compile failed`, e)
+         undefined
          return
       }
-      const syntheticEvent = { name: eventName, data: { token: tokenDoc } }
+      const syntheticEvent = { name: eventName, data: { token: regionTokenDoc } }
       try {
+         debugTurn("adjacent turn execute script", {
+            region: region.uuid,
+            behavior: behaviorDebug(behavior),
+            token: tokenDebug(regionTokenDoc),
+            originalToken: tokenDebug(tokenDoc),
+            eventName,
+         })
          await fn(syntheticEvent, region, scene, behavior)
+         debugTurn("adjacent turn script completed", {
+            region: region.uuid,
+            behavior: behaviorDebug(behavior),
+            token: tokenDebug(regionTokenDoc),
+            originalToken: tokenDebug(tokenDoc),
+            eventName,
+         })
       } catch (e) {
-         console.warn(`[${MODULE_ID}] adjacent-turn script threw`, e)
+         undefined
       }
    } catch (e) {
-      console.warn(`[${MODULE_ID}] maybeDispatchAdjacentTurn failed`, e)
+      undefined
    }
 }
 
@@ -413,36 +812,208 @@ function isTokenGeometryUpdate(changes) {
 }
 
 export function tokenRegionContact(region, tokenDoc, override = null) {
+   const ringContact = tokenRingRegionContact(region, tokenDoc, override)
+   if (ringContact) return ringContact
    const footprint = getRegionFootprint(region)
    if (!footprint || footprint.cells.length === 0)
       return { inside: false, adjacent: false }
-   const cellSet = footprint.cellSet
-   const gridSize = footprint.gridSize
+   const { contact, geometry, tokenCells } = footprintTokenContact(
+      tokenDoc,
+      override,
+      footprint,
+   )
+   debugContact("footprint", {
+      region: regionContactDebug(region, footprint),
+      token: tokenDebug(tokenDoc),
+      geometry,
+      tokenCells,
+      contact,
+   })
+   return contact
+}
+
+function footprintTokenContact(tokenDoc, override, footprint) {
+   const cellSet = footprint?.cellSet
+   const gridSize = footprint?.gridSize
    const geometry = getTokenGeometry(tokenDoc, override)
-   const tx = geometry.x
-   const ty = geometry.y
-   const w = geometry.width
-   const h = geometry.height
-   const baseCol = Math.floor(tx / gridSize)
-   const baseRow = Math.floor(ty / gridSize)
-   let inside = false
-   for (let dr = 0; dr < h && !inside; dr++) {
-      for (let dc = 0; dc < w && !inside; dc++) {
-         if (cellSet.has(baseCol + dc + ":" + (baseRow + dr))) inside = true
-      }
+   if (!cellSet || !gridSize) {
+      return { contact: { inside: false, adjacent: false }, geometry, tokenCells: [] }
    }
+   const tokenCells = tokenFootprintCells(geometry, gridSize)
+   const inside = tokenCells.some((cell) => cellSet.has(cellKey(cell.col, cell.row)))
    let adjacent = false
    if (!inside) {
-      outer: for (let dr = -1; dr <= h; dr++) {
-         for (let dc = -1; dc <= w; dc++) {
-            if (cellSet.has(baseCol + dc + ":" + (baseRow + dr))) {
-               adjacent = true
-               break outer
+      outer: for (const cell of tokenCells) {
+         for (let dr = -1; dr <= 1; dr++) {
+            for (let dc = -1; dc <= 1; dc++) {
+               if (dc === 0 && dr === 0) continue
+               if (cellSet.has(cellKey(cell.col + dc, cell.row + dr))) {
+                  adjacent = true
+                  break outer
+               }
             }
          }
       }
    }
-   return { inside, adjacent }
+   const contact = { inside, adjacent }
+   return { contact, geometry, tokenCells }
+}
+
+function tokenFootprintCells(geometry, gridSize) {
+   const x = Number(geometry.x)
+   const y = Number(geometry.y)
+   const width = Math.max(1, Number(geometry.width) || 1) * gridSize
+   const height = Math.max(1, Number(geometry.height) || 1) * gridSize
+   if (![x, y, width, height].every(Number.isFinite)) return []
+   const epsilon = 0.01
+   const startCol = Math.floor((x + epsilon) / gridSize)
+   const endCol = Math.floor((x + width - epsilon) / gridSize)
+   const startRow = Math.floor((y + epsilon) / gridSize)
+   const endRow = Math.floor((y + height - epsilon) / gridSize)
+   const cells = []
+   for (let row = startRow; row <= endRow; row++) {
+      for (let col = startCol; col <= endCol; col++) {
+         cells.push({ col, row })
+      }
+   }
+   return cells
+}
+
+function cellKey(col, row) {
+   return col + ":" + row
+}
+
+function regionContactDebug(region, footprint = null) {
+   const shape = firstRegionShape(region)
+   return {
+      id: region?.id,
+      uuid: region?.uuid,
+      name: region?.name,
+      shape,
+      activeShape: getActiveTemplateShapeType(region),
+      footprintBounds: footprint?.bounds ?? null,
+      footprintCells: footprint?.cells?.length ?? 0,
+   }
+}
+
+function firstRegionShape(region) {
+   const shapes = Array.isArray(region?.shapes)
+      ? region.shapes
+      : Array.isArray(region?.shapes?.contents)
+        ? region.shapes.contents
+        : []
+   return shapes[0]?.toObject?.() ?? shapes[0] ?? null
+}
+
+function tokenRingRegionContact(region, tokenDoc, override = null) {
+   if (getActiveTemplateShapeType(region) !== "ring") return null
+   const footprint = getRegionFootprint(region)
+   const ring = ringContactShape(region)
+   const gridSize = footprint?.gridSize ?? region?.parent?.grid?.size ?? 100
+   const geometry = getTokenGeometry(tokenDoc, override)
+   if (!ring || !Number.isFinite(gridSize) || gridSize <= 0)
+      return { inside: false, adjacent: false }
+   return classifyRingGeometryContact(geometry, ring, gridSize)
+}
+
+function classifyRingGeometryContact(geometry, ring, gridSize) {
+   const rect = tokenGeometryRect(geometry, gridSize)
+   if (!rect) return { inside: false, adjacent: false }
+   const edgeEpsilon = Math.max(0.5, gridSize * 0.005)
+   const centerDistance = Math.hypot(rect.centerX - ring.x, rect.centerY - ring.y)
+   if (
+      centerDistance > ring.inner + edgeEpsilon &&
+      centerDistance <= ring.outer + edgeEpsilon
+   )
+      return { inside: true, adjacent: false }
+   if (centerDistance <= ring.inner + edgeEpsilon) {
+      const maxDistance = maxDistanceFromPointToRectCorners(ring, rect)
+      return {
+         inside: false,
+         adjacent: maxDistance >= ring.inner - gridSize / 2 - edgeEpsilon,
+      }
+   }
+   const minDistance = distanceFromPointToRect(ring, rect)
+   return {
+      inside: false,
+      adjacent: minDistance <= ring.outer + gridSize * 1.5 + edgeEpsilon,
+   }
+}
+
+function tokenGeometryRect(geometry, gridSize) {
+   const x = Number(geometry?.x)
+   const y = Number(geometry?.y)
+   const width = Math.max(0.01, Number(geometry?.width) || 1) * gridSize
+   const height = Math.max(0.01, Number(geometry?.height) || 1) * gridSize
+   if (![x, y, width, height].every(Number.isFinite)) return null
+   return {
+      x,
+      y,
+      width,
+      height,
+      right: x + width,
+      bottom: y + height,
+      centerX: x + width / 2,
+      centerY: y + height / 2,
+   }
+}
+
+function distanceFromPointToRect(point, rect) {
+   const dx =
+      point.x < rect.x ? rect.x - point.x : point.x > rect.right ? point.x - rect.right : 0
+   const dy =
+      point.y < rect.y ? rect.y - point.y : point.y > rect.bottom ? point.y - rect.bottom : 0
+   return Math.hypot(dx, dy)
+}
+
+function maxDistanceFromPointToRectCorners(point, rect) {
+   return Math.max(
+      Math.hypot(rect.x - point.x, rect.y - point.y),
+      Math.hypot(rect.right - point.x, rect.y - point.y),
+      Math.hypot(rect.x - point.x, rect.bottom - point.y),
+      Math.hypot(rect.right - point.x, rect.bottom - point.y),
+   )
+}
+
+function ringContactShape(region) {
+   const shapes = []
+   try {
+      const overrideShape = getWizardShapeOverride(region)
+      if (overrideShape) shapes.push(overrideShape)
+   } catch (_e) {}
+   const nativeShapes = Array.isArray(region?.shapes)
+      ? region.shapes
+      : Array.isArray(region?.shapes?.contents)
+        ? region.shapes.contents
+        : []
+   shapes.push(...nativeShapes)
+   for (const shape of shapes) {
+      const ring = normalizeRingContactShape(shape?.toObject?.() ?? shape)
+      if (ring) return ring
+   }
+   return null
+}
+
+function normalizeRingContactShape(shape) {
+   if (shape?.type !== "ring") return null
+   const x = Number(shape.x)
+   const y = Number(shape.y)
+   if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+   const radius = Number(shape.radius)
+   const outerWidth = Number(shape.outerWidth)
+   let inner = 0
+   let outer = 0
+   if (Number.isFinite(radius) && radius > 0 && Number.isFinite(outerWidth) && outerWidth > 0) {
+      inner = Math.max(0, radius - outerWidth / 2)
+      outer = radius + outerWidth / 2
+   } else {
+      outer = Number(shape.outerRadius ?? shape.radius ?? 0)
+      inner = Number(shape.innerRadius ?? 0)
+   }
+   if (!Number.isFinite(inner)) inner = 0
+   if (!Number.isFinite(outer) || outer <= 0) return null
+   inner = Math.max(0, Math.min(inner, outer))
+   return { x, y, inner, outer }
 }
 
 export async function runBehaviorScript(region, behavior, tokenDoc, eventName) {
@@ -457,7 +1028,7 @@ export async function runBehaviorScript(region, behavior, tokenDoc, eventName) {
    try {
       fn = new AsyncFunction("event", "region", "scene", "behavior", src)
    } catch (e) {
-      console.warn(`[${MODULE_ID}] effect lifecycle script compile failed`, e)
+      undefined
       return { ok: false, reason: "compile failed", error: e }
    }
    try {
@@ -469,7 +1040,7 @@ export async function runBehaviorScript(region, behavior, tokenDoc, eventName) {
       )
       return { ok: true, eventName }
    } catch (e) {
-      console.warn(`[${MODULE_ID}] effect lifecycle script threw`, e)
+      undefined
       return { ok: false, reason: "script threw", error: e }
    }
 }
@@ -481,17 +1052,41 @@ async function dispatchLifecycleScript(region, behavior, tokenDoc, eventName) {
       behavior.id ??
       "lifecycle"
    const key = `${region?.uuid ?? ""}|${tokenKey ?? ""}|${groupKey}`
-   if (LIFECYCLE_DISPATCHING.has(key)) return { ok: false, reason: "busy" }
+   if (LIFECYCLE_DISPATCHING.has(key)) {
+      debugLifecycle("dispatch skipped busy", {
+         eventName,
+         region: region?.uuid,
+         behavior: behaviorDebug(behavior),
+         token: tokenDebug(tokenDoc),
+         groupKey,
+      })
+      return { ok: false, reason: "busy" }
+   }
    const recent = LIFECYCLE_RECENT_DISPATCH.get(key)
    const now = Date.now()
    if (
       recent?.eventName === eventName &&
       now - recent.time < LIFECYCLE_DUPLICATE_EVENT_MS
    ) {
+      debugLifecycle("dispatch skipped duplicate", {
+         eventName,
+         region: region?.uuid,
+         behavior: behaviorDebug(behavior),
+         token: tokenDebug(tokenDoc),
+         groupKey,
+         elapsed: now - recent.time,
+      })
       return { ok: false, reason: "duplicate" }
    }
    LIFECYCLE_DISPATCHING.add(key)
    try {
+      debugLifecycle("dispatch start", {
+         eventName,
+         region: region?.uuid,
+         behavior: behaviorDebug(behavior),
+         token: tokenDebug(tokenDoc),
+         groupKey,
+      })
       const result = await runBehaviorScript(
          region,
          behavior,
@@ -501,6 +1096,14 @@ async function dispatchLifecycleScript(region, behavior, tokenDoc, eventName) {
       if (result?.ok) {
          LIFECYCLE_RECENT_DISPATCH.set(key, { eventName, time: Date.now() })
       }
+      debugLifecycle("dispatch result", {
+         eventName,
+         region: region?.uuid,
+         behavior: behaviorDebug(behavior),
+         token: tokenDebug(tokenDoc),
+         groupKey,
+         result,
+      })
       return result
    } finally {
       LIFECYCLE_DISPATCHING.delete(key)
@@ -519,7 +1122,7 @@ function scheduleLifecycleCatchupForToken(tokenDoc, reason = "token-update") {
    const timer = setTimeout(() => {
       LIFECYCLE_CATCHUP_TIMERS.delete(key)
       catchupEffectLifecycleForToken(tokenDoc, reason).catch((e) => {
-         console.warn(`[${MODULE_ID}] lifecycle catch-up failed`, e)
+         undefined
       })
    }, 100)
    LIFECYCLE_CATCHUP_TIMERS.set(key, timer)
@@ -544,7 +1147,7 @@ function scheduleRemoteLifecycleCatchupForToken(
          `player-${reason}`,
          geometry,
       ).catch((e) => {
-         console.warn(`[${MODULE_ID}] remote lifecycle catch-up failed`, e)
+         undefined
       })
    }, 100)
    REMOTE_LIFECYCLE_CATCHUP_TIMERS.set(key, timer)
@@ -577,7 +1180,7 @@ async function catchupEffectLifecycleForToken(
    geometryOverride = null,
 ) {
    if (!game.user.isGM) return
-   if (game.user.id !== game.users.activeGM?.id) return
+   if (!isCurrentUserActiveGM()) return
    const scene = tokenDoc?.document?.parent ?? tokenDoc.parent ?? canvas.scene
    if (!scene) return
    const actor = tokenDoc.actor ?? tokenDoc.document?.actor
@@ -585,26 +1188,44 @@ async function catchupEffectLifecycleForToken(
       normalizeLifecycleGeometry(geometryOverride) ??
       recentRemoteLifecycleGeometry(tokenDoc)
 
-   for (const region of scene.regions) {
+   for (const region of sceneRegionList(scene)) {
       const behaviors = regionBehaviorList(region)
       if (!behaviors.length) continue
       const contact = tokenRegionContact(region, tokenDoc, geometry)
       rememberLifecycleContact(region, tokenDoc, contact)
       for (const behavior of behaviors) {
-         if (behavior.disabled || behavior.type !== "executeScript") continue
+         if (behavior.disabled || !isExecuteScriptBehavior(behavior)) continue
          const triggers = behavior.flags?.[FLAG_SCOPE]?.triggers ?? []
-         if (!Array.isArray(triggers) || !triggers.includes("whileAdjacent"))
+         if (
+            !Array.isArray(triggers) ||
+            (!triggers.includes("whileAdjacent") &&
+               !triggers.includes("whileWithin"))
+         )
             continue
-         const groupKey = behavior.flags?.[FLAG_SCOPE]?.triggerGroupKey ?? ""
-         const active = lifecycleAdjacentActive(region, contact, triggers)
+         const groupKey = lifecycleTriggerGroupKey(behavior, triggers)
+         const active = lifecycleBehaviorActive(region, contact, triggers)
          const hasLifecycleState = actorHasLifecycleState(
             actor,
             region,
             groupKey,
          )
          let eventName = null
-         if (active && !hasLifecycleState) eventName = "atwAdjacentEnter"
-         else if (!active && hasLifecycleState) eventName = "atwAdjacentExit"
+         if (active && !hasLifecycleState) {
+            eventName = lifecycleEnterEvent(region, contact, triggers)
+         } else if (!active && hasLifecycleState) {
+            eventName = lifecycleExitEvent(triggers)
+         }
+         debugLifecycle("catchup evaluate", {
+            reason,
+            region: region?.uuid,
+            behavior: behaviorDebug(behavior),
+            token: tokenDebug(tokenDoc),
+            contact,
+            active,
+            hasLifecycleState,
+            eventName,
+            groupKey,
+         })
          if (!eventName) continue
          await dispatchLifecycleScript(region, behavior, tokenDoc, eventName)
       }
@@ -630,7 +1251,7 @@ async function onUpdateTokenForEffectLifecycle(
    userId,
 ) {
    if (!game.user.isGM) return
-   if (game.user.id !== game.users.activeGM?.id) return
+   if (!isCurrentUserActiveGM()) return
    if (!isTokenGeometryUpdate(changes)) return
    const scene = tokenDoc.parent ?? canvas.scene
    if (!scene) return
@@ -640,7 +1261,7 @@ async function onUpdateTokenForEffectLifecycle(
       : null
    if (tokenKey) TOKEN_PRE_UPDATE_STATE.delete(tokenKey)
 
-   for (const region of scene.regions) {
+   for (const region of sceneRegionList(scene)) {
       const behaviors = regionBehaviorList(region)
       if (!behaviors.length) continue
       const rememberedContact = before
@@ -655,30 +1276,46 @@ async function onUpdateTokenForEffectLifecycle(
       const afterContact = tokenRegionContact(region, tokenDoc, remoteGeometry)
       rememberLifecycleContact(region, tokenDoc, afterContact)
       for (const behavior of behaviors) {
-         if (behavior.disabled || behavior.type !== "executeScript") continue
+         if (behavior.disabled || !isExecuteScriptBehavior(behavior)) continue
          const triggers = behavior.flags?.[FLAG_SCOPE]?.triggers ?? []
-         if (!Array.isArray(triggers) || !triggers.includes("whileAdjacent"))
+         if (
+            !Array.isArray(triggers) ||
+            (!triggers.includes("whileAdjacent") &&
+               !triggers.includes("whileWithin"))
+         )
             continue
-         const groupKey = behavior.flags?.[FLAG_SCOPE]?.triggerGroupKey ?? ""
+         const groupKey = lifecycleTriggerGroupKey(behavior, triggers)
          const hasLifecycleState = actorHasLifecycleState(
             tokenDoc.actor,
             region,
             groupKey,
          )
-         const beforeAdjacent = beforeContact
-            ? lifecycleAdjacentActive(region, beforeContact, triggers)
+         const beforeActive = beforeContact
+            ? lifecycleBehaviorActive(region, beforeContact, triggers)
             : hasLifecycleState
-         const afterAdjacent = lifecycleAdjacentActive(
-            region,
-            afterContact,
-            triggers,
-         )
+         const afterActive = lifecycleBehaviorActive(region, afterContact, triggers)
          let eventName = null
-         if (afterAdjacent && !hasLifecycleState) {
-            eventName = "atwAdjacentEnter"
-         } else if (beforeAdjacent !== afterAdjacent) {
-            eventName = afterAdjacent ? "atwAdjacentEnter" : "atwAdjacentExit"
+         if (afterActive && !hasLifecycleState) {
+            eventName = lifecycleEnterEvent(region, afterContact, triggers)
+         } else if (beforeActive !== afterActive) {
+            eventName = afterActive
+               ? lifecycleEnterEvent(region, afterContact, triggers)
+               : lifecycleExitEvent(triggers)
          }
+         debugLifecycle("token update evaluate", {
+            region: region?.uuid,
+            behavior: behaviorDebug(behavior),
+            token: tokenDebug(tokenDoc),
+            beforeContact,
+            afterContact,
+            beforeActive,
+            afterActive,
+            hasLifecycleState,
+            eventName,
+            groupKey,
+            changes: Object.keys(changes ?? {}),
+            userId,
+         })
          if (!eventName) continue
          await dispatchLifecycleScript(region, behavior, tokenDoc, eventName)
       }
@@ -708,13 +1345,13 @@ export async function applyLifecycleInitialStates(region) {
    const behaviors = regionBehaviorList(region)
    if (!scene || !behaviors.length) return
    for (const behavior of behaviors) {
-      if (behavior.disabled || behavior.type !== "executeScript") continue
+      if (behavior.disabled || !isExecuteScriptBehavior(behavior)) continue
       const triggers = behavior.flags?.[FLAG_SCOPE]?.triggers ?? []
       if (!Array.isArray(triggers)) continue
       const wantsWithin = triggers.includes("whileWithin")
       const wantsAdjacent = triggers.includes("whileAdjacent")
       if (!wantsWithin && !wantsAdjacent) continue
-      for (const tokenDoc of scene.tokens) {
+      for (const tokenDoc of sceneTokenList(scene)) {
          const contact = tokenRegionContact(region, tokenDoc)
          rememberLifecycleContact(region, tokenDoc, contact)
          if (wantsWithin && contact.inside) {
@@ -748,10 +1385,7 @@ export function scheduleLifecycleInitialStateCatchup(region) {
             : region
       if (!currentRegion?.parent) return
       applyLifecycleInitialStates(currentRegion).catch((e) => {
-         console.warn(
-            `[${MODULE_ID}] delayed lifecycle initial dispatch failed`,
-            e,
-         )
+         undefined
       })
    }, 150)
 }

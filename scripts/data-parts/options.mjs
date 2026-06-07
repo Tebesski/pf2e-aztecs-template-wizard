@@ -42,6 +42,8 @@ export function getDamageTypeVisual(type) {
 
 export const CONSEQUENCE_TYPE_OPTIONS = [
   { value: "damage",              label: "PF2EATW.Consequence.Damage" },
+  { value: "heal",                label: "Heal" },
+  { value: "move",                label: "Move" },
   { value: "savingThrow",         label: "PF2EATW.Consequence.SavingThrow" },
   { value: "rollSkill",           label: "PF2EATW.Consequence.SkillCheck" },
   { value: "applyEffect",         label: "PF2EATW.Consequence.ApplyEffect" },

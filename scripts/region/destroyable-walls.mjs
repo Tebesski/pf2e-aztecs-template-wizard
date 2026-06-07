@@ -1,4 +1,5 @@
 import { FLAG_SCOPE, MODULE_ID } from "../data.mjs"
+import { sourceItemForRegion } from "../compendium/template-entry-item.mjs"
 
 async function tryFromUuid(uuid) {
    if (!uuid) return null
@@ -63,7 +64,7 @@ export async function onDeleteActorForDestroyableWalls(actor, options, userId) {
          await safelyDeleteDocuments(tokensToDelete)
       }
    } catch (e) {
-      console.warn(`[${MODULE_ID}] onDeleteActorForDestroyableWalls failed`, e)
+      undefined
    }
 }
 
@@ -418,10 +419,7 @@ export async function syncDestroyableWallActorsForEntry(
       try {
          await scene.updateEmbeddedDocuments("Token", liveTokenUpdates)
       } catch (e) {
-         console.warn(
-            `[${MODULE_ID}] failed to move destroyable wall tokens`,
-            e,
-         )
+         undefined
       }
    }
    const liveWallUpdates = liveEmbeddedUpdates(scene, "walls", wallUpdates)
@@ -620,7 +618,7 @@ export async function spawnConstructActorsForWalls(walls, config) {
             }
          } catch (_e) {}
       } catch (e) {
-         console.warn(`[${MODULE_ID}] spawnConstructActorsForWalls failed`, e)
+         undefined
       }
    }
    return created
@@ -635,11 +633,8 @@ export async function spawnDestroyableWallActors(region, scene, entry, walls) {
    let baseName = "Wall"
    let sourceItem = null
    try {
-      const managed = region.getFlag(FLAG_SCOPE, "managed")
-      if (managed?.itemUuid) {
-         sourceItem = await tryFromUuid(managed.itemUuid)
-         if (sourceItem?.name) baseName = sourceItem.name
-      }
+      sourceItem = await sourceItemForRegion(region, tryFromUuid)
+      if (sourceItem?.name) baseName = sourceItem.name
    } catch (_e) {}
 
    const sharedConfig = {
@@ -715,10 +710,7 @@ export async function spawnDestroyableWallActors(region, scene, entry, walls) {
             }
          } catch (_e) {}
       } catch (e) {
-         console.warn(
-            `[${MODULE_ID}] failed to spawn destroyable wall actor`,
-            e,
-         )
+         undefined
       }
    }
 }
@@ -775,8 +767,7 @@ export async function cleanupDestroyableWallActor(actor) {
          if (fresh?.parent || game.actors?.get?.(actor.id)) await fresh.delete()
       } catch (_e) {}
    } catch (e) {
-      console.warn(`[${MODULE_ID}] cleanupDestroyableWallActor failed`, e)
-
+      undefined
       CLEANED_DESTROYABLE_WALL_ACTORS.delete(actor.id)
    } finally {
       RUNNING_DESTROYABLE_WALL_ACTOR_CLEANUPS.delete(actor.id)

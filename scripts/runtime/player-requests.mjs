@@ -72,7 +72,9 @@ async function showChoiceDialog({
    content,
    choices,
    cancelValue = null,
+   cancelLabel = null,
    hideChoiceButtons = false,
+   modal = true,
 }) {
    const options = Array.isArray(choices) ? choices : []
    if (!options.length) return cancelValue
@@ -117,7 +119,7 @@ async function showChoiceDialog({
               }))
          buttons.push({
             action: "cancel",
-            label: game.i18n?.localize?.("Cancel") ?? "Cancel",
+            label: cancelLabel || game.i18n?.localize?.("Cancel") || "Cancel",
             callback: () => done(cancelValue),
          })
          DV2.wait({
@@ -125,7 +127,7 @@ async function showChoiceDialog({
             content: html,
             buttons,
             rejectClose: false,
-            modal: true,
+            modal: !!modal,
             render: (_event, dlg) => {
                bindContentChoiceButtons(
                   dlg?.element ?? dlg,
@@ -158,7 +160,7 @@ async function showChoiceDialog({
             }
          }
          buttons.cancel = {
-            label: game.i18n?.localize?.("Cancel") ?? "Cancel",
+            label: cancelLabel || game.i18n?.localize?.("Cancel") || "Cancel",
             callback: () => done(cancelValue),
          }
          const dlg = new Dialog({
@@ -189,10 +191,12 @@ async function handleChoiceDialogRequest(data) {
          content: data.content,
          choices: data.choices,
          cancelValue: data.cancelValue ?? null,
+         cancelLabel: data.cancelLabel ?? null,
          hideChoiceButtons: !!data.hideChoiceButtons,
+         modal: data.modal !== false,
       })
    } catch (e) {
-      console.error(`[${MODULE_ID}] choice dialog request failed`, e)
+      undefined
    }
    game.socket.emit(SOCKET_CHANNEL, {
       type: "choiceDialogResult",
@@ -209,7 +213,9 @@ export async function requestPlayerChoiceDialog({
    content,
    choices,
    cancelValue = null,
+   cancelLabel = null,
    hideChoiceButtons = false,
+   modal = true,
    timeoutMs = 120000,
 }) {
    const target = findActiveNonGmOwner(actor, userId)
@@ -219,7 +225,9 @@ export async function requestPlayerChoiceDialog({
          content,
          choices,
          cancelValue,
+         cancelLabel,
          hideChoiceButtons,
+         modal,
       })
    }
 
@@ -244,7 +252,9 @@ export async function requestPlayerChoiceDialog({
       content,
       choices: Array.isArray(choices) ? choices : [],
       cancelValue,
+      cancelLabel,
       hideChoiceButtons,
+      modal,
    })
    return await promise
 }
@@ -312,7 +322,7 @@ async function handleSaveRequest(data) {
          outcome,
       })
    } catch (e) {
-      console.error(`[${MODULE_ID}] save request handler failed`, e)
+      undefined
       game.socket.emit(SOCKET_CHANNEL, {
          type: "saveResult",
          requestId: data.requestId,
@@ -354,7 +364,7 @@ export async function requestPlayerSave({
          })
          return extractSaveOutcome(result)
       } catch (e) {
-         console.error(`[${MODULE_ID}] local save roll failed`, e)
+         undefined
          return null
       }
    }
@@ -421,7 +431,7 @@ async function handleSkillRollRequest(data) {
          outcome,
       })
    } catch (e) {
-      console.error(`[${MODULE_ID}] skill request handler failed`, e)
+      undefined
       game.socket.emit(SOCKET_CHANNEL, {
          type: "skillResult",
          requestId: data.requestId,
@@ -476,7 +486,7 @@ export async function requestPlayerSkillRoll({
          })
          return extractSaveOutcome(result)
       } catch (e) {
-         console.error(`[${MODULE_ID}] local skill roll failed`, e)
+         undefined
          return null
       }
    }

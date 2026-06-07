@@ -1,11 +1,13 @@
 import { MODULE_ID } from "../data.mjs"
-import { enrichChatContent } from "./card-helpers.mjs"
+import { getRegionFootprint } from "../region/geometry.mjs"
+import { enrichChatContent, escapeHTML, resolveRuntimeNumber } from "./card-helpers.mjs"
 export const SAVE_OUTCOME_CLASSES = [
    "critical-failure",
    "failure",
    "success",
    "critical-success",
 ]
+const RESTRICTION_EFFECT_LOCKS = new Set()
 
 export async function cleanupRuntimeConsequencesForTarget(targetUuid, messageId) {
    if (!targetUuid || !messageId) return 0
@@ -29,7 +31,7 @@ export async function gmCleanupRuntimeConsequences(payload = {}) {
       )
       return { ok: true, count }
    } catch (e) {
-      console.warn(`[${MODULE_ID}] MTcard consequence cleanup failed`, e)
+      undefined
       return { ok: false, reason: "cleanup-failed" }
    }
 }
@@ -60,7 +62,7 @@ export async function gmApplyRuntimeConsequences(payload = {}) {
          )
          count += 1
       } catch (e) {
-         console.warn(`[${MODULE_ID}] MTcard consequence dispatch failed`, e)
+         undefined
       }
    }
    return { ok: true, count }
@@ -106,6 +108,175 @@ export async function applyCardDamageToTarget(targetUuid, dmg, multiplier) {
    return true
 }
 
+export async function applyCardHealingToTarget(targetUuid, healing, multiplier = 1) {
+   const tokenDoc = await fromUuid(targetUuid)
+   if (!tokenDoc?.actor) return false
+   const actor = tokenDoc.actor
+   const scale = Math.max(0, Number(multiplier) || 1)
+   const amount = Math.max(0, Math.floor((Number(healing?.total ?? healing?.amount) || 0) * scale))
+   if (amount <= 0) return false
+   if (typeof actor.applyDamage === "function") {
+      try {
+         await actor.applyDamage({
+            damage: -amount,
+            token: tokenDoc.object ?? tokenDoc,
+         })
+         return true
+      } catch (_e) {}
+   }
+   const current = Number(foundry.utils.getProperty(actor, "system.attributes.hp.value"))
+   const max = Number(foundry.utils.getProperty(actor, "system.attributes.hp.max"))
+   if (!Number.isFinite(current) || !Number.isFinite(max)) return false
+   await actor.update({
+      "system.attributes.hp.value": Math.min(max, current + amount),
+   })
+   return true
+}
+
+export async function moveTokenByRegionVector(tokenDoc, region, direction, feet) {
+   if (!tokenDoc?.update || !region) return false
+   const distance = Math.max(0, Number(feet) || 0)
+   if (distance <= 0) return false
+   const center = regionCenter(region)
+   const { gridSize, gridDistance } = movementGridMetrics(tokenDoc, region)
+   const tokenWidth = tokenWidthPx(tokenDoc, gridSize)
+   const tokenHeight = tokenHeightPx(tokenDoc, gridSize)
+   const tokenCenter = {
+      x: Number(tokenDoc.x) + tokenWidth / 2,
+      y: Number(tokenDoc.y) + tokenHeight / 2,
+   }
+   if (!center || !Number.isFinite(tokenCenter.x) || !Number.isFinite(tokenCenter.y)) return false
+   let dx = tokenCenter.x - center.x
+   let dy = tokenCenter.y - center.y
+   const length = Math.hypot(dx, dy)
+   if (length <= 0) return false
+   dx /= length
+   dy /= length
+   const pixels = (distance / gridDistance) * gridSize
+   const sign = direction === "toward" ? -1 : 1
+   const buildNext = (moveSign) => {
+      const next = {
+         x: Number(tokenDoc.x) + dx * pixels * moveSign,
+         y: Number(tokenDoc.y) + dy * pixels * moveSign,
+      }
+      next.x = Math.round(next.x / gridSize) * gridSize
+      next.y = Math.round(next.y / gridSize) * gridSize
+      return next
+   }
+   const distanceFromCenter = (position) =>
+      Math.hypot(
+         position.x + tokenWidth / 2 - center.x,
+         position.y + tokenHeight / 2 - center.y,
+      )
+   const beforeDistance = distanceFromCenter({
+      x: Number(tokenDoc.x),
+      y: Number(tokenDoc.y),
+   })
+   let next = buildNext(sign)
+   let afterDistance = distanceFromCenter(next)
+   const opposite = buildNext(-sign)
+   const oppositeDistance = distanceFromCenter(opposite)
+   if (direction === "toward") {
+      if (afterDistance > beforeDistance && oppositeDistance < afterDistance) next = opposite
+   } else if (afterDistance < beforeDistance && oppositeDistance > afterDistance) {
+      next = opposite
+   }
+   const best = bestSnappedMovement({
+      current: { x: Number(tokenDoc.x), y: Number(tokenDoc.y) },
+      center,
+      tokenWidth,
+      tokenHeight,
+      gridSize,
+      pixels,
+      desired: { x: dx * sign, y: dy * sign },
+      direction,
+   })
+   if (best) next = best
+   afterDistance = distanceFromCenter(next)
+   if (direction === "toward" && afterDistance >= beforeDistance) return false
+   if (direction !== "toward" && afterDistance <= beforeDistance) return false
+   await tokenDoc.update(next)
+   return true
+}
+
+export async function applyRestrictionEffectToToken({
+   tokenDoc,
+   restrictions,
+   duration,
+   sourceItemUuid,
+   flavor,
+   region,
+   messageId,
+   triggerGroupKey,
+   effectLifecycle,
+} = {}) {
+   const actor = tokenDoc?.actor
+   const entries = normalizeRestrictions(restrictions)
+   if (!actor || !entries.length) return false
+   const regionUuid = region?.uuid ?? null
+   const sourceUuid = sourceItemUuid ?? null
+   const groupKey = triggerGroupKey ?? ""
+   const cardMessageId = messageId ?? null
+   const lockKey = [
+      actor.uuid ?? actor.id ?? "",
+      regionUuid ?? "",
+      sourceUuid ?? "",
+      groupKey,
+      cardMessageId ?? "",
+   ].join("|")
+   if (RESTRICTION_EFFECT_LOCKS.has(lockKey)) return false
+   RESTRICTION_EFFECT_LOCKS.add(lockKey)
+   try {
+      let srcItem = null
+      if (sourceUuid) srcItem = await fromUuid(sourceUuid).catch(() => null)
+      const existingIds = actor.items
+         .filter((item) => {
+            const flags = item.flags?.[MODULE_ID] ?? {}
+            return (
+               flags.restrictionEffect === true &&
+               (flags.appliedByRegion ?? null) === regionUuid &&
+               (flags.sourceItemUuid ?? null) === sourceUuid &&
+               (flags.mtCardMessageId ?? null) === cardMessageId &&
+               (flags.triggerGroupKey ?? "") === groupKey
+            )
+         })
+         .map((item) => item.id)
+         .filter(Boolean)
+      if (existingIds.length) await actor.deleteEmbeddedDocuments("Item", existingIds)
+      const effect = {
+         type: "effect",
+         name: `Restricted: ${flavor || srcItem?.name || "Template"}`,
+         img: srcItem?.img || "icons/svg/padlock.svg",
+         system: {
+            rules: [],
+            duration: normalizeRuntimeDuration(duration),
+            start: { value: 0, initiative: null },
+            description: { value: restrictionDescription(entries) },
+            traits: { value: [], rarity: "common" },
+            level: { value: 1 },
+            tokenIcon: { show: true },
+            unidentified: false,
+         },
+         flags: {
+            [MODULE_ID]: {
+               isParentEffect: true,
+               restrictionEffect: true,
+               restrictions: entries,
+               appliedByRegion: regionUuid,
+               sourceItemUuid: sourceUuid,
+               mtCardMessageId: cardMessageId,
+               triggerGroupKey: groupKey,
+               effectLifecycle: !!effectLifecycle,
+            },
+         },
+      }
+      await actor.createEmbeddedDocuments("Item", [effect])
+      return true
+   } finally {
+      RESTRICTION_EFFECT_LOCKS.delete(lockKey)
+   }
+}
+
 export async function gmApplyCardDamage(payload = {}) {
    if (!game.user?.isGM) return { ok: false, reason: "not-gm" }
    try {
@@ -118,9 +289,290 @@ export async function gmApplyCardDamage(payload = {}) {
          ? { ok: true }
          : { ok: false, reason: "damage-not-applied" }
    } catch (e) {
-      console.warn(`[${MODULE_ID}] applyDamage failed`, e)
+      undefined
       return { ok: false, reason: "apply-failed" }
    }
+}
+
+export async function gmApplyCardHealing(payload = {}) {
+   if (!game.user?.isGM) return { ok: false, reason: "not-gm" }
+   try {
+      const ok = await applyCardHealingToTarget(
+         payload.targetUuid,
+         payload.healing,
+         payload.multiplier,
+      )
+      return ok
+         ? { ok: true }
+         : { ok: false, reason: "healing-not-applied" }
+   } catch (_e) {
+      return { ok: false, reason: "apply-failed" }
+   }
+}
+
+export async function gmApplyRestrictionEffect(payload = {}) {
+   if (!game.user?.isGM) return { ok: false, reason: "not-gm" }
+   const tokenDoc = await fromUuid(payload.targetUuid).catch(() => null)
+   let region = null
+   if (payload.regionUuid) region = await fromUuid(payload.regionUuid).catch(() => null)
+   const ok = await applyRestrictionEffectToToken({
+      tokenDoc,
+      restrictions: payload.restrictions,
+      duration: payload.duration,
+      sourceItemUuid: payload.sourceItemUuid ?? null,
+      flavor: payload.flavor ?? null,
+      region,
+      messageId: payload.messageId ?? null,
+      triggerGroupKey: payload.triggerGroupKey ?? "",
+      effectLifecycle: !!payload.effectLifecycle,
+   })
+   return ok ? { ok: true } : { ok: false, reason: "restriction-not-applied" }
+}
+
+export async function gmPersistCardMessage(payload = {}) {
+   if (!game.user?.isGM) return { ok: false, reason: "not-gm" }
+   const messageId = String(payload.messageId ?? "")
+   const content = typeof payload.content === "string" ? payload.content : null
+   if (!messageId || !content) return { ok: false, reason: "invalid-payload" }
+
+   const msg = game.messages?.get?.(messageId)
+   if (!msg?.update) return { ok: false, reason: "missing-message" }
+   if (!msg.getFlag?.(MODULE_ID, "card")) return { ok: false, reason: "not-atw-card" }
+
+   const user = payload.userId ? game.users?.get?.(payload.userId) : null
+   if (!user) return { ok: false, reason: "unknown-user" }
+   if (!user?.isGM) {
+      const targetUuid = String(payload.targetUuid ?? "")
+      if (!targetUuid) return { ok: false, reason: "missing-target" }
+      const tokenDoc = await fromUuid(targetUuid).catch(() => null)
+      const actor = tokenDoc?.actor
+      if (!actor?.testUserPermission?.(user, "OWNER")) {
+         return { ok: false, reason: "not-owner" }
+      }
+   }
+
+   const update = { content }
+   if (Array.isArray(payload.rollDiceState)) {
+      update[`flags.${MODULE_ID}.rollDiceState`] = payload.rollDiceState
+   }
+
+   try {
+      await msg.update(update)
+      return { ok: true }
+   } catch (e) {
+      undefined
+      return { ok: false, reason: "update-failed" }
+   }
+}
+
+function regionCenter(region) {
+   const rectangleCenter = visibleRectangleCenter(region)
+   if (rectangleCenter) return rectangleCenter
+   const footprint = getRegionFootprint(region)
+   const footprintBounds = footprint?.bounds
+   if (footprintBounds) {
+      const x = Number(footprintBounds.x)
+      const y = Number(footprintBounds.y)
+      const width = Number(footprintBounds.width)
+      const height = Number(footprintBounds.height)
+      if ([x, y, width, height].every(Number.isFinite)) {
+         return { x: x + width / 2, y: y + height / 2, source: "footprint" }
+      }
+   }
+   const bounds = region?.object?.bounds ?? region?.bounds
+   if (bounds) {
+      const x = Number(bounds.x)
+      const y = Number(bounds.y)
+      const width = Number(bounds.width)
+      const height = Number(bounds.height)
+      if ([x, y, width, height].every(Number.isFinite)) {
+         return { x: x + width / 2, y: y + height / 2, source: "bounds" }
+      }
+   }
+   const shapes = Array.isArray(region?.shapes)
+      ? region.shapes
+      : Array.isArray(region?.shapes?.contents)
+        ? region.shapes.contents
+        : []
+   const points = []
+   for (const shape of shapes) {
+      const data = shape?.toObject?.() ?? shape
+      const x = Number(data.x)
+      const y = Number(data.y)
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue
+      const width = Number(data.width ?? data.radius ?? data.size ?? 0)
+      const height = Number(data.height ?? data.radius ?? data.size ?? 0)
+      const length = Number(data.length ?? 0)
+      points.push({
+         x: x + Math.max(width, length) / 2,
+         y: y + height / 2,
+      })
+   }
+   if (!points.length) return null
+   return {
+      x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
+      y: points.reduce((sum, point) => sum + point.y, 0) / points.length,
+      source: "shapes",
+   }
+}
+
+function visibleRectangleCenter(region) {
+   const shape = firstRegionShape(region)
+   if (shape?.type !== "rectangle") return null
+   const bounds = region?.object?.bounds
+   if (bounds) {
+      const x = Number(bounds.x)
+      const y = Number(bounds.y)
+      const width = Number(bounds.width)
+      const height = Number(bounds.height)
+      if ([x, y, width, height].every(Number.isFinite)) {
+         return { x: x + width / 2, y: y + height / 2, source: "visible-rectangle" }
+      }
+   }
+   const x = Number(shape.x)
+   const y = Number(shape.y)
+   const width = Number(shape.width)
+   const height = Number(shape.height)
+   if (![x, y, width, height].every(Number.isFinite)) return null
+   return { x: x + width / 2, y: y + height / 2, source: "rectangle-shape" }
+}
+
+function firstRegionShape(region) {
+   const shapes = Array.isArray(region?.shapes)
+      ? region.shapes
+      : Array.isArray(region?.shapes?.contents)
+        ? region.shapes.contents
+        : []
+   return shapes[0]?.toObject?.() ?? shapes[0] ?? null
+}
+
+function movementGridMetrics(tokenDoc, region) {
+   const scene = tokenDoc?.parent ?? region?.parent ?? canvas?.scene
+   const gridSize = Number(scene?.grid?.size ?? canvas?.grid?.size ?? 100) || 100
+   const gridDistance = Number(scene?.grid?.distance ?? canvas?.scene?.grid?.distance ?? 5) || 5
+   return { gridSize, gridDistance }
+}
+
+function bestSnappedMovement({
+   current,
+   center,
+   tokenWidth,
+   tokenHeight,
+   gridSize,
+   pixels,
+   desired,
+   direction,
+}) {
+   const before = Math.hypot(
+      current.x + tokenWidth / 2 - center.x,
+      current.y + tokenHeight / 2 - center.y,
+   )
+   const maxSteps = Math.max(1, Math.ceil(pixels / gridSize))
+   let best = null
+   let bestDistance = before
+   for (let xStep = -maxSteps; xStep <= maxSteps; xStep += 1) {
+      for (let yStep = -maxSteps; yStep <= maxSteps; yStep += 1) {
+         if (xStep === 0 && yStep === 0) continue
+         const moveX = xStep * gridSize
+         const moveY = yStep * gridSize
+         if (moveX * desired.x + moveY * desired.y <= 0) continue
+         const position = {
+            x: current.x + moveX,
+            y: current.y + moveY,
+         }
+         const nextDistance = Math.hypot(
+            position.x + tokenWidth / 2 - center.x,
+            position.y + tokenHeight / 2 - center.y,
+         )
+         if (direction === "toward") {
+            if (nextDistance < bestDistance - 0.001) {
+               best = position
+               bestDistance = nextDistance
+            }
+         } else if (nextDistance > bestDistance + 0.001) {
+            best = position
+            bestDistance = nextDistance
+         }
+      }
+   }
+   return best
+}
+
+function tokenWidthPx(tokenDoc, gridSize) {
+   return (Number(tokenDoc.width) || 1) * gridSize
+}
+
+function tokenHeightPx(tokenDoc, gridSize) {
+   return (Number(tokenDoc.height) || 1) * gridSize
+}
+
+function normalizeRuntimeDuration(duration) {
+   if (!duration?.enabled) {
+      return {
+         value: -1,
+         unit: "unlimited",
+         sustained: false,
+         expiry: "turn-start",
+      }
+   }
+   const unit = ["rounds", "minutes", "hours", "days"].includes(duration.unit)
+      ? duration.unit
+      : "rounds"
+   return {
+      value: Math.max(1, Number(duration.amount) || 1),
+      unit,
+      sustained: false,
+      expiry: "turn-start",
+   }
+}
+
+function normalizeRestrictions(restrictions) {
+   const allowedKinds = new Set(["spell", "strike", "move", "skill", "item", "ability"])
+   const allowedSkills = new Set([
+      "acrobatics",
+      "arcana",
+      "athletics",
+      "crafting",
+      "deception",
+      "diplomacy",
+      "intimidation",
+      "medicine",
+      "nature",
+      "occultism",
+      "performance",
+      "religion",
+      "society",
+      "stealth",
+      "survival",
+      "thievery",
+      "perception",
+      "lore",
+   ])
+   return (Array.isArray(restrictions) ? restrictions : [])
+      .filter((entry) => entry && typeof entry === "object")
+      .map((entry) => {
+         const kind = allowedKinds.has(entry.kind) ? entry.kind : "spell"
+         const skill = allowedSkills.has(entry.skill) ? entry.skill : "athletics"
+         return {
+            kind,
+            slug: String(entry.slug ?? "").trim(),
+            rollOptions: String(entry.rollOptions ?? "").trim(),
+            skill,
+            lore: String(entry.lore ?? "").trim(),
+         }
+      })
+}
+
+function restrictionDescription(entries) {
+   if (!entries.length) return ""
+   const labels = entries.map((entry) => {
+      if (entry.kind === "skill") {
+         const skill = entry.skill === "lore" ? entry.lore || "lore" : entry.skill
+         return `Restrict ${skill}`
+      }
+      return `Restrict ${entry.kind}`
+   })
+   return `<ul>${labels.map((label) => `<li>${escapeHTML(label)}</li>`).join("")}</ul>`
 }
 
 async function applyRuntimeConsequence(
@@ -208,7 +660,7 @@ async function applyRuntimeConsequence(
             try {
                await ChatMessage.create(md)
             } catch (e) {
-               console.warn(`[${MODULE_ID}] damage message create failed`, e)
+               undefined
             }
          }
          try {
@@ -228,6 +680,39 @@ async function applyRuntimeConsequence(
                })
             } catch (_e) {}
          }
+         return
+      }
+
+      case "heal": {
+         const amount = resolveRuntimeNumber(c.amount ?? 5, {
+            tokenDoc,
+            sourceItem: srcItem,
+            region,
+         })
+         await applyCardHealingToTarget(tokenDoc.uuid, { total: amount, healingType: c.healingType ?? "untyped" })
+         return
+      }
+
+      case "move": {
+         await moveTokenByRegionVector(
+            tokenDoc,
+            region,
+            c.direction === "toward" ? "toward" : "away",
+            c.distance ?? 5,
+         )
+         return
+      }
+
+      case "restrict": {
+         await applyRestrictionEffectToToken({
+            tokenDoc,
+            restrictions: c.restrictions,
+            duration: c.duration,
+            sourceItemUuid,
+            flavor,
+            region,
+            messageId,
+         })
          return
       }
 
@@ -324,7 +809,7 @@ async function applyRuntimeConsequence(
          try {
             await actor.createEmbeddedDocuments("Item", [parent])
          } catch (e) {
-            console.warn(`[${MODULE_ID}] applyEffect/Condition/Rule failed`, e)
+            undefined
          }
          return
       }
@@ -378,7 +863,7 @@ async function applyRuntimeConsequence(
                }
             }
          } catch (e) {
-            console.warn(`[${MODULE_ID}] removeCondition failed`, e)
+            undefined
          }
          return
       }
@@ -395,7 +880,7 @@ async function applyRuntimeConsequence(
                })
             }
          } catch (e) {
-            console.warn(`[${MODULE_ID}] executeMacro failed`, e)
+            undefined
          }
          return
       }
@@ -411,6 +896,8 @@ async function applyRuntimeConsequence(
             region,
             sourceItem: srcItem,
             placer: srcItem?.actor ?? null,
+            target: actor,
+            targetToken: tokenDoc,
          }
          let content = String(raw).replace(
             /@([a-zA-Z_][\w]*(?:\.[a-zA-Z_][\w]*)*)/g,

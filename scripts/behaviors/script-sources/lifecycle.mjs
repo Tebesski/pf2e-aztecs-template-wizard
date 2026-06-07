@@ -313,7 +313,7 @@ async function restoreRemovedItems() {
   }
   if (creates.length > 0) {
     try { await actor.createEmbeddedDocuments("Item", creates); }
-    catch (e) { console.warn("[atw] failed to restore removed items", e); }
+    catch (e) { undefined; }
   }
   delete regionBucket[TRIGGER_GROUP_KEY];
   if (Object.keys(regionBucket).length === 0) delete store[regionKey];

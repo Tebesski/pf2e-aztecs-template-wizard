@@ -122,6 +122,16 @@ export function wireSaveConsequenceControls($tab, item) {
                      ]
                   }
                   break
+               case "heal":
+                  if (c.amount == null) c.amount = "5"
+                  if (!["untyped", "vitality", "void"].includes(c.healingType)) {
+                     c.healingType = "untyped"
+                  }
+                  break
+               case "move":
+                  if (!["toward", "away"].includes(c.direction)) c.direction = "away"
+                  if (c.distance == null) c.distance = 5
+                  break
                case "applyCondition":
                case "removeCondition":
                   if (!c.condition || typeof c.condition !== "object")

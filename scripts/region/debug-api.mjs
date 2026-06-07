@@ -32,6 +32,11 @@ function resolveTokenDocument(token) {
    return targeted ?? null
 }
 
+function isExecuteScriptBehavior(behavior) {
+   const type = String(behavior?.type ?? "")
+   return type === "executeScript" || type.endsWith(".executeScript")
+}
+
 export function debugAdjacentLifecycle(token = null, region = null) {
    const tokenDoc = resolveTokenDocument(token)
    const resolvedRegion = resolveRegion(region)
@@ -41,7 +46,7 @@ export function debugAdjacentLifecycle(token = null, region = null) {
    const footprint = getRegionFootprint(resolvedRegion)
    const contact = tokenRegionContact(resolvedRegion, tokenDoc)
    const behaviors = (resolvedRegion.behaviors ?? [])
-      .filter((behavior) => behavior.type === "executeScript")
+      .filter((behavior) => isExecuteScriptBehavior(behavior))
       .map((behavior) => {
          const flags = behavior.flags?.[FLAG_SCOPE] ?? {}
          const triggers = flags.triggers ?? []
@@ -112,7 +117,7 @@ export async function debugTriggerAdjacentLifecycle(token = null, region = null)
 
    const contact = tokenRegionContact(resolvedRegion, tokenDoc)
    const behaviors = (resolvedRegion.behaviors ?? []).filter((behavior) => {
-      if (behavior.disabled || behavior.type !== "executeScript") return false
+      if (behavior.disabled || !isExecuteScriptBehavior(behavior)) return false
       const triggers = behavior.flags?.[FLAG_SCOPE]?.triggers ?? []
       return Array.isArray(triggers) && triggers.includes("whileAdjacent")
    })

@@ -54,7 +54,6 @@ try {
   }
 } catch (_e) {}
 for (const d of DAMAGES) {
-  if (!d?.extraRollOptionsEnabled) continue;
   const extras = String(d.extraRollOptions ?? "")
     .split(",").map(s => s.trim()).filter(Boolean);
   for (const e of extras) rollOptions.push(e);
@@ -72,7 +71,7 @@ if (__api?.queueDamageCard) {
     });
     if (queued) return;
   } catch (e) {
-    console.warn("[atw] damage card queue failed", e);
+    undefined;
   }
 }
 const DamageRollCtor = CONFIG.Dice?.rolls?.find(r => r.name === "DamageRoll") ?? Roll;
@@ -83,7 +82,7 @@ try {
   try {
     damageRoll = await new Roll(formula).evaluate({ allowInteractive: false });
   } catch (e2) {
-    console.error("[atw] damage roll failed", e1, e2);
+    undefined;
     return;
   }
 }
@@ -121,6 +120,222 @@ if (autoApply && typeof token.actor.applyDamage === "function") {
   try {
     await token.actor.applyDamage({ damage: damageRoll, token: token.object });
   } catch (_e) {}
+}
+`
+}
+
+export function healScriptSource({
+   amount,
+   healingType,
+   target,
+   sourceItemUuid,
+   flavor,
+}) {
+   const AMOUNT = JSON.stringify(amount)
+   const HEALING_TYPE = JSON.stringify(healingType)
+   const TARGET = JSON.stringify(target)
+   const SRC_UUID = JSON.stringify(sourceItemUuid)
+   const FLAVOR = JSON.stringify(flavor)
+
+   return `const MODULE_ID = "pf2e-aztecs-template-wizard";
+const AMOUNT = ${AMOUNT};
+const HEALING_TYPE = ${HEALING_TYPE};
+const TARGET_GROUPS = ${TARGET};
+const SOURCE_ITEM_UUID = ${SRC_UUID};
+const FLAVOR = ${FLAVOR};
+const __api = game.modules.get(MODULE_ID)?.api;
+if (__api?.isRegionDeleting?.(region?.uuid)) return;
+const token = event.data?.token;
+if (!token?.actor) return;
+if (game.user.id !== game.users.activeGM?.id) return;
+let srcItem = null;
+if (SOURCE_ITEM_UUID) {
+  try { srcItem = await fromUuid(SOURCE_ITEM_UUID); } catch (_e) {}
+}
+if (Array.isArray(TARGET_GROUPS) && TARGET_GROUPS.length > 0 && !TARGET_GROUPS.includes("all")) {
+  const placerToken = srcItem?.actor?.getActiveTokens?.()[0];
+  const placerDisp = placerToken?.document?.disposition;
+  const tokenDoc = token?.document ?? token;
+  const tokenDisp = tokenDoc?.disposition ?? 1;
+  const placerDispResolved = (placerDisp === undefined || placerDisp === null) ? 1 : placerDisp;
+  const isAlly = placerDispResolved === tokenDisp;
+  if (TARGET_GROUPS.includes("allies") && !isAlly) return;
+  if (TARGET_GROUPS.includes("enemies") && isAlly) return;
+}
+function resolveNumber(expr) {
+  if (typeof expr === "number" && Number.isFinite(expr)) return expr;
+  const raw = String(expr ?? "0").trim();
+  const direct = Number(raw);
+  if (Number.isFinite(direct)) return direct;
+  const scope = {
+    actor: srcItem?.actor ?? null,
+    placer: srcItem?.actor ?? null,
+    sourceItem: srcItem,
+    token: token.document ?? token,
+    target: token.actor,
+    region
+  };
+  const substituted = raw.replace(/@([a-zA-Z_][\\w]*(?:\\.[a-zA-Z_][\\w]*)*)/g, (_full, path) => {
+    const parts = path.split(".");
+    let current = scope[parts.shift()];
+    for (const part of parts) {
+      if (current == null) return "0";
+      current = current[part];
+    }
+    const number = Number(current);
+    return Number.isFinite(number) ? String(number) : "0";
+  });
+  if (/^[\\d\\s+\\-*/().]+$/.test(substituted)) {
+    try {
+      const value = Function('"use strict"; return (' + substituted + ");")();
+      const number = Number(value);
+      if (Number.isFinite(number)) return number;
+    } catch (_e) {}
+  }
+  return 0;
+}
+const total = Math.max(0, Math.floor(resolveNumber(AMOUNT)));
+if (total <= 0) return;
+const type = ["untyped", "vitality", "void"].includes(HEALING_TYPE) ? HEALING_TYPE : "untyped";
+if (__api?.queueHealCard) {
+  const queued = __api.queueHealCard({
+    tokenDoc: token.document ?? token,
+    actor: token.actor,
+    amount: total,
+    healingType: type,
+    item: srcItem,
+    flavor: FLAVOR,
+    regionUuid: region?.uuid ?? null
+  });
+  if (queued) return;
+}
+if (typeof token.actor.applyDamage === "function") {
+  try {
+    await token.actor.applyDamage({ damage: -total, token: token.object ?? token.document ?? token });
+    return;
+  } catch (_e) {}
+}
+const hpValue = Number(foundry.utils.getProperty(token.actor, "system.attributes.hp.value"));
+const hpMax = Number(foundry.utils.getProperty(token.actor, "system.attributes.hp.max"));
+if (Number.isFinite(hpValue) && Number.isFinite(hpMax)) {
+  await token.actor.update({ "system.attributes.hp.value": Math.min(hpMax, hpValue + total) });
+}
+`
+}
+
+export function moveTargetsScriptSource({
+   direction,
+   distance,
+   target,
+   sourceItemUuid,
+}) {
+   const DIRECTION = JSON.stringify(direction)
+   const DISTANCE = JSON.stringify(distance)
+   const TARGET = JSON.stringify(target)
+   const SRC_UUID = JSON.stringify(sourceItemUuid)
+
+   return `const MODULE_ID = "pf2e-aztecs-template-wizard";
+const DIRECTION = ${DIRECTION};
+const DISTANCE = ${DISTANCE};
+const TARGET_GROUPS = ${TARGET};
+const SOURCE_ITEM_UUID = ${SRC_UUID};
+const __api = game.modules.get(MODULE_ID)?.api;
+if (__api?.isRegionDeleting?.(region?.uuid)) return;
+const token = event.data?.token;
+if (!token?.actor) return;
+if (game.user.id !== game.users.activeGM?.id) return;
+let srcItem = null;
+if (SOURCE_ITEM_UUID) {
+  try { srcItem = await fromUuid(SOURCE_ITEM_UUID); } catch (_e) {}
+}
+if (Array.isArray(TARGET_GROUPS) && TARGET_GROUPS.length > 0 && !TARGET_GROUPS.includes("all")) {
+  const placerToken = srcItem?.actor?.getActiveTokens?.()[0];
+  const placerDisp = placerToken?.document?.disposition;
+  const tokenDoc = token?.document ?? token;
+  const tokenDisp = tokenDoc?.disposition ?? 1;
+  const placerDispResolved = (placerDisp === undefined || placerDisp === null) ? 1 : placerDisp;
+  const isAlly = placerDispResolved === tokenDisp;
+  if (TARGET_GROUPS.includes("allies") && !isAlly) return;
+  if (TARGET_GROUPS.includes("enemies") && isAlly) return;
+}
+if (__api?.moveTokenByRegionVector) {
+  await __api.moveTokenByRegionVector(token.document ?? token, region, DIRECTION === "toward" ? "toward" : "away", DISTANCE);
+}
+`
+}
+
+export function restrictActionsScriptSource({
+   restrictions,
+   duration,
+   target,
+   sourceItemUuid,
+   flavor,
+   triggerGroupKey,
+   lifecycle,
+}) {
+   const RESTRICTIONS = JSON.stringify(restrictions)
+   const DURATION = JSON.stringify(duration)
+   const TARGET = JSON.stringify(target)
+   const SRC_UUID = JSON.stringify(sourceItemUuid)
+   const FLAVOR = JSON.stringify(flavor)
+   const GROUP_KEY = JSON.stringify(triggerGroupKey ?? "")
+   const LIFECYCLE = lifecycle ? "true" : "false"
+
+   return `const MODULE_ID = "pf2e-aztecs-template-wizard";
+const RESTRICTIONS = ${RESTRICTIONS};
+const DURATION = ${DURATION};
+const TARGET_GROUPS = ${TARGET};
+const SOURCE_ITEM_UUID = ${SRC_UUID};
+const FLAVOR = ${FLAVOR};
+const TRIGGER_GROUP_KEY = ${GROUP_KEY};
+const LIFECYCLE = ${LIFECYCLE};
+const __api = game.modules.get(MODULE_ID)?.api;
+if (__api?.isRegionDeleting?.(region?.uuid)) return;
+const token = event.data?.token;
+if (!token?.actor) return;
+if (game.user.id !== game.users.activeGM?.id) return;
+let srcItem = null;
+if (SOURCE_ITEM_UUID) {
+  try { srcItem = await fromUuid(SOURCE_ITEM_UUID); } catch (_e) {}
+}
+const __restrictionEventName = String(event?.name ?? "");
+async function __removeRestrictionEffects() {
+  const ids = token.actor.items.filter(i => {
+    const flags = i.flags?.[MODULE_ID] ?? {};
+    if (!flags.restrictionEffect || flags.appliedByRegion !== region?.uuid) return false;
+    if (!TRIGGER_GROUP_KEY) return true;
+    return !flags.triggerGroupKey || flags.triggerGroupKey === TRIGGER_GROUP_KEY || flags.sourceItemUuid === SOURCE_ITEM_UUID;
+  }).map(i => i.id);
+  if (ids.length) await token.actor.deleteEmbeddedDocuments("Item", ids);
+}
+const __restrictionExitEvents = new Set(["atwAdjacentExit", "atwWithinExit", "tokenExit", "TOKEN_EXIT", "tokenMoveOut", "TOKEN_MOVE_OUT"]);
+if (__restrictionExitEvents.has(__restrictionEventName)) {
+  if (!DURATION?.enabled) await __removeRestrictionEffects();
+  return;
+}
+if (Array.isArray(TARGET_GROUPS) && TARGET_GROUPS.length > 0 && !TARGET_GROUPS.includes("all")) {
+  const placerToken = srcItem?.actor?.getActiveTokens?.()[0];
+  const placerDisp = placerToken?.document?.disposition;
+  const tokenDoc = token?.document ?? token;
+  const tokenDisp = tokenDoc?.disposition ?? 1;
+  const placerDispResolved = (placerDisp === undefined || placerDisp === null) ? 1 : placerDisp;
+  const isAlly = placerDispResolved === tokenDisp;
+  if (TARGET_GROUPS.includes("allies") && !isAlly) return;
+  if (TARGET_GROUPS.includes("enemies") && isAlly) return;
+}
+if (__api?.applyRestrictionEffectToToken) {
+  if (!DURATION?.enabled) await __removeRestrictionEffects();
+  await __api.applyRestrictionEffectToToken({
+    tokenDoc: token.document ?? token,
+    restrictions: RESTRICTIONS,
+    duration: DURATION,
+    sourceItemUuid: SOURCE_ITEM_UUID,
+    flavor: FLAVOR,
+    region,
+    messageId: null,
+    triggerGroupKey: TRIGGER_GROUP_KEY,
+    effectLifecycle: LIFECYCLE
+  });
 }
 `
 }
@@ -214,7 +429,9 @@ let content = interpolatePaths(TEXT, {
   token: token.document ?? token,
   region,
   sourceItem: srcItem,
-  placer: srcItem?.actor ?? null
+  placer: srcItem?.actor ?? null,
+  target: token.actor,
+  targetToken: token.document ?? token
 });
 content = await enrichChatContent(content, srcItem);
 const msgData = { speaker, content };
@@ -277,7 +494,7 @@ if (evName.includes("exit") || evName === "tokenExit" || evName === "TOKEN_EXIT"
   if (ours.length) {
     try {
       await token.actor.deleteEmbeddedDocuments("Item", ours.map(e => e.id));
-    } catch (e) { console.warn("[atw] failed removing addIRW effect", e); }
+    } catch (e) { undefined; }
   }
   return;
 }
@@ -449,6 +666,8 @@ function __describeConsequenceForPrompt(c) {
       });
       return \`Deal damage (\${parts.join(", ")})\`;
     }
+    case "heal":             return \`Heal (\${c.amount ?? 0} \${c.healingType ?? "untyped"})\`;
+    case "move":             return \`Move \${c.direction === "toward" ? "toward centre" : "away from centre"} \${c.distance ?? 0} ft\`;
     case "applyEffect":      return c.uuid ? \`Apply effect (\${String(c.uuid).split(".").pop()})\` : "Apply effect";
     case "applyCondition":   return \`Apply condition: \${(c.condition?.slug) ?? "?"}\${(c.condition?.value) ? " " + c.condition.value : ""}\`;
     case "removeEffect":     return c.uuid ? \`Remove effect (\${String(c.uuid).split(".").pop()})\` : "Remove effect";
@@ -518,6 +737,37 @@ async function dispatchConsequence(c, token, srcItem, region, rollTotal) {
       try { autoApply = game.settings.get(MODULE_ID, "applyDamageAutomatically"); } catch (_e) {}
       if (autoApply && typeof token.actor.applyDamage === "function") {
         try { await token.actor.applyDamage({ damage: damageRoll, token: token.object }); } catch (_e) {}
+      }
+      return;
+    }
+    case "heal": {
+      const scope = {
+        actor: srcItem?.actor ?? null,
+        placer: srcItem?.actor ?? null,
+        sourceItem: srcItem,
+        token: token.document ?? token,
+        target: token.actor,
+        region
+      };
+      const amount = Math.max(0, Math.floor(resolveNumber(c.amount ?? 0, scope)));
+      if (amount <= 0) return;
+      if (typeof token.actor.applyDamage === "function") {
+        try {
+          await token.actor.applyDamage({ damage: -amount, token: token.object ?? token.document ?? token });
+          return;
+        } catch (_e) {}
+      }
+      const hpValue = Number(foundry.utils.getProperty(token.actor, "system.attributes.hp.value"));
+      const hpMax = Number(foundry.utils.getProperty(token.actor, "system.attributes.hp.max"));
+      if (Number.isFinite(hpValue) && Number.isFinite(hpMax)) {
+        await token.actor.update({ "system.attributes.hp.value": Math.min(hpMax, hpValue + amount) });
+      }
+      return;
+    }
+    case "move": {
+      const api = game.modules.get(MODULE_ID)?.api;
+      if (api?.moveTokenByRegionVector) {
+        await api.moveTokenByRegionVector(token.document ?? token, region, c.direction === "toward" ? "toward" : "away", c.distance ?? 0);
       }
       return;
     }
@@ -615,7 +865,7 @@ async function dispatchConsequence(c, token, srcItem, region, rollTotal) {
       const raw = c.text ?? "";
       if (!raw) return;
       const speaker = ChatMessage.getSpeaker({ token: token.object });
-      let content = interpolatePaths(raw, { actor: token.actor, token: token.document ?? token, region, sourceItem: srcItem, placer: srcItem?.actor ?? null });
+      let content = interpolatePaths(raw, { actor: token.actor, token: token.document ?? token, region, sourceItem: srcItem, placer: srcItem?.actor ?? null, target: token.actor, targetToken: token.document ?? token });
       content = await enrichChatContent(content, srcItem);
       let mode = "publicroll";
       if (c.blindToGm)   mode = "blindroll";

@@ -28,8 +28,9 @@ async function renderRollDiceRowDetails(row, cardFlag, state) {
       .filter((x) => x.c)
    const formula = cardFlag.formula || "1d20"
    const lines = []
+   const resultTooltip = "Roll result"
    lines.push(
-      `<p><strong>Result:</strong> <span class="atw-roll-result" style="color:${escapeHTML(rollTotalColor(state.total, formula))};">${escapeHTML(state.total ?? "")}</span></p>`,
+      `<p><strong>Result:</strong> <span class="atw-roll-result" style="color:${escapeHTML(rollResultColor(state.total, formula, state.d20))};" title="${escapeHTML(resultTooltip)}" data-tooltip="${escapeHTML(resultTooltip)}">${escapeHTML(state.total ?? "")}</span></p>`,
    )
    if (!matched.length) lines.push("<p>No matching consequence.</p>")
    else {
@@ -47,7 +48,7 @@ async function renderRollDiceRowDetails(row, cardFlag, state) {
             if (saveState) {
                lines.push(
                   `<div class="atw-nested-check-result ${escapeHTML(outcomeClass(saveState.outcome))}">
-                     <strong>${escapeHTML(saveState.total)}</strong>
+                     <strong style="color:${escapeHTML(outcomeResultColor(saveState.outcome, saveState.d20))};" title="${escapeHTML(outcomeLabel(saveState.outcome))}" data-tooltip="${escapeHTML(outcomeLabel(saveState.outcome))}">${escapeHTML(saveState.total)}</strong>
                      <span>${escapeHTML(outcomeLabel(saveState.outcome))}</span>
                      <a class="atw-roll-reroll"
                         data-action="atw-reroll-dice-save"
@@ -59,6 +60,9 @@ async function renderRollDiceRowDetails(row, cardFlag, state) {
                )
                for (const dmg of saveState.damageRolls ?? []) {
                   lines.push(rollDiceDamageBlock(dmg))
+               }
+               for (const heal of saveState.healingEntries ?? []) {
+                  lines.push(rollDiceHealingBlock(heal))
                }
                const nestedInline = matchingOutcomeConsequences(
                   c.consequences,
@@ -81,7 +85,7 @@ async function renderRollDiceRowDetails(row, cardFlag, state) {
             if (skillState) {
                lines.push(
                   `<div class="atw-nested-check-result ${escapeHTML(outcomeClass(skillState.outcome))}">
-                     <strong>${escapeHTML(skillState.total)}</strong>
+                     <strong style="color:${escapeHTML(outcomeResultColor(skillState.outcome, skillState.d20))};" title="${escapeHTML(outcomeLabel(skillState.outcome))}" data-tooltip="${escapeHTML(outcomeLabel(skillState.outcome))}">${escapeHTML(skillState.total)}</strong>
                      <span>${escapeHTML(outcomeLabel(skillState.outcome))}</span>
                      <a class="atw-roll-reroll"
                         data-action="atw-reroll-dice-skill"
@@ -93,6 +97,9 @@ async function renderRollDiceRowDetails(row, cardFlag, state) {
                )
                for (const dmg of skillState.damageRolls ?? []) {
                   lines.push(rollDiceDamageBlock(dmg))
+               }
+               for (const heal of skillState.healingEntries ?? []) {
+                  lines.push(rollDiceHealingBlock(heal))
                }
                const nestedInline = matchingOutcomeConsequences(
                   c.consequences,
@@ -116,6 +123,9 @@ async function renderRollDiceRowDetails(row, cardFlag, state) {
    }
    for (const dmg of state.damageRolls ?? []) {
       lines.push(rollDiceDamageBlock(dmg))
+   }
+   for (const heal of state.healingEntries ?? []) {
+      lines.push(rollDiceHealingBlock(heal))
    }
    detail.innerHTML = lines.join("")
    detail.classList.remove("hidden")
@@ -147,8 +157,41 @@ async function renderSkillRowDetails(row, cardFlag, state) {
    for (const dmg of state.damageRolls ?? []) {
       lines.push(rollDiceDamageBlock(dmg))
    }
+   for (const heal of state.healingEntries ?? []) {
+      lines.push(rollDiceHealingBlock(heal))
+   }
    detail.innerHTML = lines.join("")
    detail.classList.toggle("hidden", lines.length === 0)
+}
+
+function rollDiceHealingBlock(heal) {
+   const type = ["untyped", "vitality", "void"].includes(heal.healingType)
+      ? heal.healingType
+      : "untyped"
+   const vis = DAMAGE_TYPE_VISUAL[type] ?? DAMAGE_TYPE_VISUAL.untyped
+   return `<section class="atw-mtcard-damage card-content">
+      <div class="dice-formula" style="background:transparent;border:none;box-shadow:none;padding:0;text-align:left;">
+        <div style="display:flex;align-items:center;margin-bottom:2px;gap:6px;">
+            <span><i class="fa-solid ${escapeHTML(vis.icon)}" style="color:${escapeHTML(vis.color)};margin-right:4px;"></i>
+            <strong>${escapeHTML(heal.total ?? 0)}</strong>
+            <span style="text-transform:capitalize;margin-left:2px;">${escapeHTML(type)}</span></span>
+        </div>
+        <div style="display:flex;justify-content:flex-end;align-items:center;margin-top:4px;padding-top:4px;border-top:1px dashed rgba(0,0,0,0.15);">
+          <span style="color:var(--rnt-accent, #c34);font-weight:bold;font-size:1.15em;">Total: ${escapeHTML(heal.total ?? 0)}</span>
+        </div>
+      </div>
+      <section class="damage-application small atw-mtcard-apply" style="transition:filter 0.3s;">
+        <button type="button" data-action="atw-roll-dice-apply-healing" data-healing-id="${escapeHTML(heal.id)}" data-multiplier="1">
+          <i class="fa-solid fa-heart-pulse fa-fw"></i><span class="label">Heal</span>
+        </button>
+        <button type="button" class="half-damage" data-action="atw-roll-dice-apply-healing" data-healing-id="${escapeHTML(heal.id)}" data-multiplier="0.5">
+          <i class="fa-solid fa-heart-pulse fa-fw"></i><span class="label">Half</span>
+        </button>
+        <button type="button" data-action="atw-roll-dice-apply-healing" data-healing-id="${escapeHTML(heal.id)}" data-multiplier="2">
+          <img src="systems/pf2e/icons/damage/double.svg"><span class="label">Double</span>
+        </button>
+      </section>
+   </section>`
 }
 
 function rollDiceDamageBlock(dmg) {
@@ -260,7 +303,7 @@ async function rollDamageFormula(formula, rollOptions = []) {
          instances,
       }
    } catch (e) {
-      console.warn(`[${MODULE_ID}] failed to roll card damage`, e)
+      undefined
       return null
    }
 }
@@ -283,10 +326,11 @@ async function inlineChatConsequenceHTML(c, row, cardFlag) {
       actor: tokenDoc?.actor ?? null,
       token: tokenDoc,
       region,
-      sourceItem,
-      placer: sourceItem?.actor ?? null,
-      target: tokenDoc?.actor ?? null,
-   })
+     sourceItem,
+     placer: sourceItem?.actor ?? null,
+     target: tokenDoc?.actor ?? null,
+     targetToken: tokenDoc,
+  })
    const enriched = await enrichChatContent(content, sourceItem)
    return `<div class="atw-inline-message">${enriched}</div>`
 }
@@ -400,6 +444,21 @@ function rollTotalColor(total, formula = "") {
    return "var(--color-text-hyperlink, #5e2ea0)"
 }
 
+function naturalD20Color(d20, fallback = "var(--color-text-primary, currentColor)") {
+   const natural = Number(d20)
+   if (natural === 20) return "#15803d"
+   if (natural === 1) return "#b91c1c"
+   return fallback
+}
+
+function outcomeResultColor(outcome, d20 = null) {
+   return naturalD20Color(d20, outcomeColor(outcome))
+}
+
+function rollResultColor(total, formula = "", d20 = null) {
+   return naturalD20Color(d20, rollTotalColor(total, formula))
+}
+
 function skillKeyForCard(skill, lore) {
    if (skill === "lore" && lore) {
       return String(lore)
@@ -408,6 +467,21 @@ function skillKeyForCard(skill, lore) {
          .replace(/^-+|-+$/g, "")
    }
    return skill || "athletics"
+}
+
+function titleCaseWords(value) {
+   return String(value ?? "")
+      .replace(/[-_]+/g, " ")
+      .trim()
+      .replace(/\b[a-z]/g, (letter) => letter.toUpperCase())
+}
+
+function loreLabelForKey(skill) {
+   const base = String(skill ?? "")
+      .replace(/[-_\s]*lore$/i, "")
+      .replace(/[-_]+/g, " ")
+      .trim()
+   return `${titleCaseWords(base || "Custom")} (Lore)`
 }
 
 function skillLabelForKey(skill) {
@@ -430,7 +504,10 @@ function skillLabelForKey(skill) {
       thievery: "Thievery",
       perception: "Perception",
    }
-   return labels[skill] ?? String(skill ?? "Skill").replace(/-/g, " ")
+   const key = String(skill ?? "")
+   if (key === "lore") return "Lore"
+   if (/[-_\s]*lore$/i.test(key)) return loreLabelForKey(key)
+   return labels[key] ?? titleCaseWords(key || "Skill")
 }
 
 async function rollSkillForCard({
@@ -478,6 +555,8 @@ function damageConsequenceFormula(c) {
 function describeRollDiceConsequence(c, row = null, cardFlag = null) {
    if (!c) return "Consequence"
    if (c.type === "damage") return "Damage"
+   if (c.type === "heal") return `Heal (${c.amount ?? 0} ${c.healingType ?? "untyped"})`
+   if (c.type === "move") return `Move ${c.direction === "toward" ? "toward centre" : "away from centre"} (${c.distance ?? 0} ft)`
    if (c.type === "savingThrow")
       return `${saveLabelForKey(c.save)} Save (DC ${resolveConsequenceDcForCard(c, row, cardFlag)})`
    if (c.type === "rollSkill")
@@ -504,11 +583,12 @@ function resolveRuntimeNumber(expr, { tokenDoc, sourceItem, region }) {
    const scope = {
       actor: sourceItem?.actor ?? null,
       placer: sourceItem?.actor ?? null,
-      sourceItem,
-      token: tokenDoc,
-      target: tokenDoc?.actor ?? null,
-      region,
-   }
+     sourceItem,
+     token: tokenDoc,
+     target: tokenDoc?.actor ?? null,
+     targetToken: tokenDoc,
+     region,
+  }
    const substituted = raw.replace(
       /@([a-zA-Z_][\w]*(?:\.[a-zA-Z_][\w]*)*)/g,
       (_full, path) => {
@@ -547,7 +627,7 @@ async function getItemDescriptionHTML(item) {
          const value = String(desc?.value ?? "").trim()
          if (value) return value
       } catch (e) {
-         console.warn(`[${MODULE_ID}] failed to enrich item description`, e)
+         undefined
       }
    }
 
@@ -569,7 +649,7 @@ async function getItemDescriptionHTML(item) {
          ).trim()
       }
    } catch (e) {
-      console.warn(`[${MODULE_ID}] failed to enrich raw item description`, e)
+      undefined
    }
 
    return String(raw).trim()
@@ -596,12 +676,14 @@ export {
    outcomeClass,
    outcomeColor,
    outcomeLabel,
+   outcomeResultColor,
    renderRollDiceRowDetails,
    renderSharedDamageBlock,
    renderSkillRowDetails,
    resolveRuntimeNumber,
    rollDamageConsequence,
    rollDamageFormula,
+   rollResultColor,
    rollSkillForCard,
    rollTotalColor,
    saveLabelForKey,

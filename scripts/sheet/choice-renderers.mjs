@@ -86,7 +86,7 @@ export function choiceRowHtml(c, idx) {
       statHtml = `<select class="atw-choice-skill">${skillOpts}</select>`
       if (sk === "lore") {
          statHtml += `<input type="text" class="atw-choice-lore"
-                          placeholder="${escapeHTML(localize("PF2EATW.Field.LoreNamePlaceholder"))}"
+                          placeholder="magic-lore"
                           value="${escapeHTML(String(cur.lore ?? ""))}">`
       }
    }
@@ -104,7 +104,7 @@ export function choiceRowHtml(c, idx) {
       <input type="text" class="atw-choice-dc"
              list="${dcListId}"
              value="${escapeHTML(String(cur.dc ?? 15))}"
-             placeholder="15"
+             placeholder="15 or @placer.system.attributes.spellDC.value"
              title="${escapeHTML(localize("PF2EATW.Field.DC"))}">
       <datalist id="${dcListId}">${dcSuggestOpts}</datalist>
       <a data-action="remove-choice" class="atw-consequence-remove">

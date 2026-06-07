@@ -101,7 +101,7 @@ if (__useTH) {
       consequences: CONSEQUENCES,
       regionUuid: region?.uuid ?? null
     });
-  } catch (e) { console.warn("[atw] Target Helper queue failed", e); }
+  } catch (e) { undefined; }
   return;
 }
 let outcome = null;
@@ -115,7 +115,7 @@ try {
     flavor: FLAVOR
   });
 } catch (e) {
-  console.error("[atw] requestPlayerSave failed", e);
+  undefined;
   return;
 }
 if (!outcome) return;
@@ -160,7 +160,7 @@ if (__grantFamily.length > 0) {
       await __dispatchSaveGrantFamily(__grantFamily, token, srcItem, region);
     }
   } catch (e) {
-    console.error("[atw] save grant-family dispatch failed", e);
+    undefined;
   }
 }
 for (const c of __other) {
@@ -189,7 +189,7 @@ for (const c of __other) {
     }
     await dispatchConsequence(c, token, srcItem, region, 0);
   } catch (e) {
-    console.error("[atw] save consequence dispatch failed", c, e);
+    undefined;
   }
 }
 

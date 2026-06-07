@@ -1,4 +1,3 @@
-import { defaultAutomation } from "../data.mjs"
 import { localize, renderModuleTemplate } from "../common/html.mjs"
 
 export async function promptForImportJson() {
@@ -60,22 +59,23 @@ export async function promptForImportJson() {
    })
 }
 
-export async function promptForAutomationJson(
-   initialAutomation,
-   { title = "Edit Automation" } = {},
-) {
-   const json = JSON.stringify(
-      initialAutomation ?? defaultAutomation(),
-      null,
-      2,
-   )
-   const content = await renderModuleTemplate("dialogs/import-json.hbs", {
-      prompt: "",
-      rows: 18,
-      value: json,
+export async function promptForImportFile() {
+   const title = "Import Templates Compendium"
+   const content = await renderModuleTemplate("dialogs/import-file.hbs", {
+      prompt: "Choose a Template Wizard compendium JSON file.",
+      accept: ".json,application/json",
    })
-   const readValue = (root) =>
-      root.querySelector(".atw-import-textarea")?.value ?? ""
+   const readFile = async (root) => {
+      const file = root.querySelector(".atw-import-file")?.files?.[0]
+      if (!file) return null
+      if (typeof file.text === "function") return await file.text()
+      return await new Promise((resolve, reject) => {
+         const reader = new FileReader()
+         reader.onload = () => resolve(String(reader.result ?? ""))
+         reader.onerror = () => reject(reader.error)
+         reader.readAsText(file)
+      })
+   }
    const DV2 = foundry?.applications?.api?.DialogV2
    if (DV2?.wait) {
       return await new Promise((resolve) => {
@@ -84,10 +84,11 @@ export async function promptForAutomationJson(
             content,
             buttons: [
                {
-                  action: "save",
-                  label: localize("PF2EATW.Compendium.SaveAutomationJson"),
+                  action: "import",
+                  label: "Import",
                   default: true,
-                  callback: (_e, _b, dlg) => resolve(readValue(dlg.element)),
+                  callback: async (_e, _b, dlg) =>
+                     resolve(await readFile(dlg.element)),
                },
                {
                   action: "cancel",
@@ -106,13 +107,14 @@ export async function promptForAutomationJson(
          title,
          content,
          buttons: {
-            save: {
-               label: localize("PF2EATW.Compendium.SaveAutomationJson"),
-               callback: (html) => resolve(readValue(html[0])),
+            import: {
+               label: "Import",
+               callback: async (html) =>
+                  resolve(await readFile(html[0])),
             },
             cancel: { label: "Cancel", callback: () => resolve(null) },
          },
-         default: "save",
+         default: "import",
          close: () => resolve(null),
       }).render(true)
    })

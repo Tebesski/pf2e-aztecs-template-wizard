@@ -1,5 +1,7 @@
 import { MODULE_ID } from "./data.mjs"
 import { executeAsGM } from "./runtime/index.mjs"
+import { spellCastHeighteningForItemUuid } from "./heightening.mjs"
+import { readAutomation } from "./sheet/automation-storage.mjs"
 
 const PATCH_FLAG = "__atwTemplatePlacementResizePatched"
 const DOUBLE_CLICK_FALLBACK_MS = 250
@@ -33,49 +35,92 @@ export function installTemplatePlacementResize() {
       data,
       options = {},
    ) {
+      data = attachSpellCastHeightening(data)
       if (!shouldPatchPlacement(data)) {
          return original.call(this, data, options)
       }
 
-      const state = { lastRightClick: null, pendingShrink: null }
+      const state = {
+         lastRightClick: null,
+         pendingShrink: null,
+         range: await placementRangeStateFor(data),
+      }
       const userPreSkip = options.preSkip
+      const userPreConfirm = options.preConfirm
       const wrappedOptions = {
          ...options,
+         preConfirm: (args) => {
+            ACTIVE_RESIZE_ARGS = args ?? ACTIVE_RESIZE_ARGS
+            updatePlacementRangeState(args, state.range)
+            if (isPlacementOutOfRange(state.range)) {
+               warnOutOfRange(state.range)
+               return false
+            }
+            return userPreConfirm?.(args)
+         },
          preSkip: (args) => {
             ACTIVE_RESIZE_ARGS = args ?? ACTIVE_RESIZE_ARGS
-            if (args?.event?.button !== 2) return userPreSkip?.(args)
+            if (args?.event?.button !== 2) {
+               updatePlacementRangeState(args, state.range)
+               if (isPlacementOutOfRange(state.range)) {
+                  warnOutOfRange(state.range)
+                  return false
+               }
+               if (state.range?.outOfRange) {
+                  restorePlacementPreviewColor(args.document, state.range)
+               }
+               return userPreSkip?.(args)
+            }
             if (!isRightClickResizeEnabled()) return userPreSkip?.(args)
             const allowed = userPreSkip?.(args)
             if (allowed === false) return false
             handleRightClickResize(args, state)
+            updatePlacementRangeState(args, state.range)
             return false
          },
       }
-      let onMoveHandler = wrapPlacementMove(options.onMove)
+      let onMoveHandler = wrapPlacementMove(options.onMove, state.range)
       Object.defineProperty(wrappedOptions, "onMove", {
          configurable: true,
          enumerable: true,
          get: () => onMoveHandler,
          set: (fn) => {
-            onMoveHandler = wrapPlacementMove(fn)
+            onMoveHandler = wrapPlacementMove(fn, state.range)
          },
       })
 
+      const removeWheelRotationFallback = installPlacementWheelRotationFallback()
       try {
          const result = await original.call(this, data, wrappedOptions)
          delegatePlacedTemplateAutomation(data, result)
          return result
       } finally {
+         removeWheelRotationFallback()
          ACTIVE_RESIZE_ARGS = null
          clearPendingShrink(state)
+         restorePlacementPreviewColor(state.range?.document, state.range)
+         destroyPlacementRangeOverlay(state.range)
       }
    }
 }
 
-function wrapPlacementMove(fn) {
+function attachSpellCastHeightening(data) {
+   const itemUuid = extractPlacementItemUuid(data)
+   const info = spellCastHeighteningForItemUuid(itemUuid)
+   if (!info) return data
+   const next = foundry.utils.deepClone(data ?? {})
+   next.flags ??= {}
+   next.flags[MODULE_ID] ??= {}
+   next.flags[MODULE_ID].spellCastHeightening = foundry.utils.deepClone(info)
+   return next
+}
+
+function wrapPlacementMove(fn, rangeState = null) {
    return (args) => {
       ACTIVE_RESIZE_ARGS = args ?? ACTIVE_RESIZE_ARGS
-      return fn?.(args)
+      const result = fn?.(args)
+      updatePlacementRangeState(args, rangeState)
+      return result
    }
 }
 
@@ -84,11 +129,58 @@ function resizeActiveTemplatePlacement(direction) {
    return resizePlacementShape(ACTIVE_RESIZE_ARGS, direction)
 }
 
+function installPlacementWheelRotationFallback() {
+   const handler = (event) => {
+      if (!ACTIVE_RESIZE_ARGS || (!event.shiftKey && !event.ctrlKey)) return
+      if (
+         !rotatePlacementShape(
+            ACTIVE_RESIZE_ARGS,
+            event.deltaY >= 0 ? 1 : -1,
+            event.ctrlKey ? 15 : 5,
+         )
+      )
+         return
+      event.preventDefault()
+      event.stopPropagation()
+      event.stopImmediatePropagation?.()
+   }
+   window.addEventListener("wheel", handler, { capture: true, passive: false })
+   return () => window.removeEventListener("wheel", handler, { capture: true })
+}
+
 function isRightClickResizeEnabled() {
    try {
       return game.settings.get(MODULE_ID, "enableTemplateResizeRmb") !== false
    } catch (_e) {
       return true
+   }
+}
+
+function shouldRestrictPlacementRange() {
+   try {
+      return game.settings.get(MODULE_ID, "restrictTemplatePlacementRange") !== false
+   } catch (_e) {
+      return true
+   }
+}
+
+function shouldDrawPlacementRangeLine() {
+   try {
+      return game.settings.get(MODULE_ID, "drawTemplatePlacementRangeLine") !== false
+   } catch (_e) {
+      return true
+   }
+}
+
+function isPlacementOutOfRange(state) {
+   return !!(state?.outOfRange && shouldRestrictPlacementRange())
+}
+
+function placementRangeLineColor() {
+   try {
+      return String(game.settings.get(MODULE_ID, "templatePlacementRangeLineColor") || "#ffcc33")
+   } catch (_e) {
+      return "#ffcc33"
    }
 }
 
@@ -116,10 +208,7 @@ function delegatePlacedTemplateAutomation(data, result) {
             ownerUserId: game.user.id,
          })
       } catch (e) {
-         console.warn(
-            `[${MODULE_ID}] failed to delegate placed template automation to GM`,
-            e,
-         )
+         undefined
       }
    }, 350)
 }
@@ -152,6 +241,223 @@ function extractPlacementItemUuid(data) {
       }
    }
    return null
+}
+
+async function placementRangeStateFor(data) {
+   const config =
+      normalizePlacementRange(data?.flags?.[MODULE_ID]?.placementRange) ??
+      (await placementRangeFromOrigin(data))
+   if (!config) return null
+   const placer = await placerPointForPlacement(data)
+   if (!placer) return null
+   return {
+      maxFeet: config.max,
+      placer,
+      currentFeet: 0,
+      outOfRange: false,
+      originalColor: null,
+      overlay: null,
+      graphics: null,
+      text: null,
+      lastWarn: 0,
+   }
+}
+
+async function placementRangeFromOrigin(data) {
+   const itemUuid = extractPlacementItemUuid(data)
+   if (!itemUuid) return null
+   const item = await fromUuid(itemUuid).catch(() => null)
+   if (!item?.getFlag) return null
+   return normalizePlacementRange(readAutomation(item)?.placementRange)
+}
+
+function normalizePlacementRange(value) {
+   if (!value || typeof value !== "object" || !value.enabled) return null
+   const max = Number(value.max)
+   if (!Number.isFinite(max) || max <= 0) return null
+   return { max }
+}
+
+async function placerPointForPlacement(data) {
+   const itemUuid = extractPlacementItemUuid(data)
+   const item = itemUuid ? await fromUuid(itemUuid).catch(() => null) : null
+   const actor = item?.actor ?? null
+   const controlled = canvas?.tokens?.controlled ?? []
+   const token =
+      (actor
+         ? controlled.find((tokenPlaceable) => tokenPlaceable.document?.actor?.id === actor.id)
+         : controlled[0]) ??
+      (actor
+         ? canvas?.tokens?.placeables?.find((tokenPlaceable) => tokenPlaceable.document?.actor?.id === actor.id)
+         : controlled[0])
+   return tokenDocumentCenter(token?.document)
+}
+
+function tokenDocumentCenter(token) {
+   if (!token) return null
+   const gridSize = sceneGridSize()
+   return {
+      x: Number(token.x ?? 0) + Math.max(1, Number(token.width ?? 1)) * gridSize / 2,
+      y: Number(token.y ?? 0) + Math.max(1, Number(token.height ?? 1)) * gridSize / 2,
+   }
+}
+
+function updatePlacementRangeState(args, state) {
+   if (!state || !args?.shape) return
+   const target = placementTargetPoint(args.shape)
+   if (!target) return
+   const feet = pixelsToFeet(Math.hypot(target.x - state.placer.x, target.y - state.placer.y))
+   state.currentFeet = feet
+   state.outOfRange = feet > state.maxFeet
+   tintPlacementPreview(args.document, state)
+   updatePlacementRangeOverlay(state, target)
+}
+
+function placementTargetPoint(shape) {
+   const type = shape?.type
+   const x = Number(shape?.x ?? 0)
+   const y = Number(shape?.y ?? 0)
+   if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+   if (type === "cone" || type === "line") return { x, y }
+   if (type === "rectangle") {
+      return {
+         x: x + (Number(shape.width ?? 0) || 0) / 2,
+         y: y + (Number(shape.height ?? 0) || 0) / 2,
+      }
+   }
+   return { x, y }
+}
+
+function tintPlacementPreview(document, state) {
+   if (!document) return
+   state.document = document
+   if (state.originalColor === null) {
+      state.originalColor = document.color ?? document._source?.color ?? "#a728cc"
+   }
+   document.updateSource?.({
+      color: state.outOfRange ? "#ff3030" : state.originalColor,
+   })
+   document.object?.renderFlags?.set?.({
+      refresh: true,
+      refreshState: true,
+      refreshShapes: true,
+   })
+}
+
+function restorePlacementPreviewColor(document, state) {
+   if (!document || !state || state.originalColor === null) return
+   document.updateSource?.({ color: state.originalColor })
+   document.object?.renderFlags?.set?.({
+      refresh: true,
+      refreshState: true,
+      refreshShapes: true,
+   })
+}
+
+function updatePlacementRangeOverlay(state, target) {
+   if (!shouldDrawPlacementRangeLine()) {
+      destroyPlacementRangeOverlay(state)
+      return
+   }
+   ensurePlacementRangeOverlay(state)
+   if (!state.graphics || !state.text) return
+   const color = state.outOfRange ? "#ff3030" : placementRangeLineColor()
+   const colorNumber = colorStringToNumber(color)
+   state.graphics.clear()
+   drawDashedLine(state.graphics, state.placer, target, colorNumber)
+   const mid = {
+      x: (state.placer.x + target.x) / 2,
+      y: (state.placer.y + target.y) / 2,
+   }
+   state.text.text = `${formatCurrentFeet(state.currentFeet)} ft. / ${formatFeet(state.maxFeet)} ft.`
+   state.text.style.fill = colorNumber
+   state.text.x = mid.x + 8
+   state.text.y = mid.y - 18
+}
+
+function ensurePlacementRangeOverlay(state) {
+   if (state.overlay || !globalThis.PIXI) return
+   const overlay = new PIXI.Container()
+   const graphics = new PIXI.Graphics()
+   const text = new PIXI.Text("", {
+      fill: colorStringToNumber(placementRangeLineColor()),
+      fontSize: 18,
+      fontFamily: "Signika, sans-serif",
+      stroke: 0x000000,
+      strokeThickness: 4,
+   })
+   overlay.addChild(graphics)
+   overlay.addChild(text)
+   ;(canvas?.interface ?? canvas?.controls ?? canvas?.stage)?.addChild?.(overlay)
+   state.overlay = overlay
+   state.graphics = graphics
+   state.text = text
+}
+
+function destroyPlacementRangeOverlay(state) {
+   if (!state?.overlay) return
+   state.overlay.destroy({ children: true })
+   state.overlay = null
+   state.graphics = null
+   state.text = null
+}
+
+function drawDashedLine(graphics, start, end, color) {
+   const dash = 18
+   const gap = 10
+   const dx = end.x - start.x
+   const dy = end.y - start.y
+   const length = Math.hypot(dx, dy)
+   if (length <= 0) return
+   graphics.lineStyle(3, color, 0.95)
+   for (let at = 0; at < length; at += dash + gap) {
+      const from = at / length
+      const to = Math.min(length, at + dash) / length
+      graphics.moveTo(start.x + dx * from, start.y + dy * from)
+      graphics.lineTo(start.x + dx * to, start.y + dy * to)
+   }
+}
+
+function colorStringToNumber(color) {
+   const normalized = String(color ?? "#ffcc33").trim().replace(/^#/, "")
+   const parsed = Number.parseInt(normalized.length === 3
+      ? normalized.split("").map((char) => char + char).join("")
+      : normalized,
+   16)
+   return Number.isFinite(parsed) ? parsed : 0xffcc33
+}
+
+function formatFeet(value) {
+   const rounded = Math.round(Number(value ?? 0) * 10) / 10
+   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
+}
+
+function formatCurrentFeet(value) {
+   const feet = Number(value ?? 0)
+   if (!Number.isFinite(feet)) return "0"
+   const increment = Math.max(1, sceneGridDistance())
+   return String(Math.floor(feet / increment) * increment)
+}
+
+function pixelsToFeet(pixels) {
+   return Number(pixels ?? 0) * sceneGridDistance() / sceneGridSize()
+}
+
+function sceneGridSize() {
+   return Number(canvas?.scene?.grid?.size ?? canvas?.grid?.size ?? canvas?.dimensions?.size) || 100
+}
+
+function sceneGridDistance() {
+   return Number(canvas?.scene?.grid?.distance ?? canvas?.grid?.distance ?? canvas?.dimensions?.distance) || 5
+}
+
+function warnOutOfRange(state) {
+   const now = Date.now()
+   if (now - Number(state.lastWarn ?? 0) < 1000) return
+   state.lastWarn = now
+   ui.notifications?.warn(
+      `Template is out of range (${formatCurrentFeet(state.currentFeet)} ft. / ${formatFeet(state.maxFeet)} ft.).`,
+   )
 }
 
 function isItemUuid(value) {
@@ -265,6 +571,36 @@ function resizePlacementShape(args, direction) {
    document.updateShapeConstraints?.()
    document.object?.renderFlags?.set?.({ refreshShapes: true })
    return true
+}
+
+function rotatePlacementShape(args, direction, stepDegrees) {
+   const shape = args?.shape
+   const document = args?.document
+   if (!shape || !document || !canRotateShape(shape)) return false
+   const current = Number(shape.rotation ?? 0)
+   const step = Number(stepDegrees) || 15
+   const next = normalizeDegrees(
+      (Number.isFinite(current) ? current : 0) + direction * step,
+   )
+   shape.updateSource({ rotation: next })
+   const shapes = Array.from(document.shapes)
+   const index = Number.isInteger(shape._index)
+      ? shape._index
+      : Math.max(0, shapes.length - 1)
+   shapes[index] = shape
+   document.updateSource({ shapes })
+   document.updateShapeConstraints?.()
+   document.object?.renderFlags?.set?.({ refreshShapes: true })
+   return true
+}
+
+function canRotateShape(shape) {
+   return ["cone", "ellipse", "line", "rectangle"].includes(shape?.type)
+}
+
+function normalizeDegrees(value) {
+   const degrees = Number(value) || 0
+   return ((degrees % 360) + 360) % 360
 }
 
 function resizedShapeUpdate(shape, delta, step) {

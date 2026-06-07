@@ -13,14 +13,27 @@ import {
 } from "../data.mjs"
 import { escapeHTML, localize } from "../common/html.mjs"
 import { readAutomation } from "./automation-storage.mjs"
-export function renderTagPicker(field, value) {
+import {
+   restrictShownTriggers,
+   restrictTriggerOptions,
+} from "./restrict-trigger-controls.mjs"
+export function renderTagPicker(field, value, context = {}) {
    const selected = Array.isArray(value) ? value.slice() : []
-   const allOpts = resolveOptions(field)
+   const resolved = resolveOptions(field)
+   const allOpts = restrictTriggerOptions(
+      { ...field, options: resolved },
+      context,
+   )
    const lookup = new Map(allOpts.map((o) => [o.value, o]))
-   const available = allOpts.filter((o) => !selected.includes(o.value))
+   const shownSelected = restrictShownTriggers(
+      { ...field, options: resolved },
+      selected,
+      context,
+   )
+   const available = allOpts.filter((o) => !shownSelected.includes(o.value))
    const promptKey = field.addPrompt ?? "PF2EATW.TagPicker.Add"
 
-   const tags = selected
+   const tags = shownSelected
       .map((v) => {
          const opt = lookup.get(v)
          const label = opt ? localize(opt.label) : v
@@ -45,7 +58,7 @@ export function renderTagPicker(field, value) {
 
    return `<div class="atw-tag-picker" data-atw-sprop="${field.key}">
     <select class="atw-tag-select" data-action="add-tag">${opts}</select>
-    <div class="atw-tag-list"${selected.length === 0 ? " hidden" : ""}>${tags}</div>
+    <div class="atw-tag-list"${shownSelected.length === 0 ? " hidden" : ""}>${tags}</div>
   </div>`
 }
 
@@ -60,7 +73,10 @@ export function refreshTagPicker(pickerEl, item) {
    const def = BEHAVIOR_CATALOG.find((b) => b.type === entry.type)
    const field = def?.fields.find((f) => f.key === fieldKey)
    if (!field) return
-   pickerEl.outerHTML = renderTagPicker(field, entry.system?.[fieldKey] ?? [])
+   pickerEl.outerHTML = renderTagPicker(field, entry.system?.[fieldKey] ?? [], {
+      behaviorType: entry.type,
+      system: entry.system ?? {},
+   })
 }
 
 export function renderIrwTagList(field, value) {
@@ -298,6 +314,132 @@ export function refreshTagInput(wrapEl, item) {
    wrapEl.outerHTML = renderTagInput(field, entry.system?.[fieldKey] ?? [])
 }
 
+const RESTRICTION_KIND_OPTIONS = [
+   { value: "spell", label: "Casting spells" },
+   { value: "strike", label: "Making Strikes" },
+   { value: "move", label: "Moving token" },
+   { value: "skill", label: "Rolling skills" },
+   { value: "item", label: "Using items" },
+   { value: "ability", label: "Using abilities" },
+]
+
+const RESTRICTION_SKILL_OPTIONS = [
+   { value: "acrobatics", label: "Acrobatics" },
+   { value: "arcana", label: "Arcana" },
+   { value: "athletics", label: "Athletics" },
+   { value: "crafting", label: "Crafting" },
+   { value: "deception", label: "Deception" },
+   { value: "diplomacy", label: "Diplomacy" },
+   { value: "intimidation", label: "Intimidation" },
+   { value: "medicine", label: "Medicine" },
+   { value: "nature", label: "Nature" },
+   { value: "occultism", label: "Occultism" },
+   { value: "performance", label: "Performance" },
+   { value: "religion", label: "Religion" },
+   { value: "society", label: "Society" },
+   { value: "stealth", label: "Stealth" },
+   { value: "survival", label: "Survival" },
+   { value: "thievery", label: "Thievery" },
+   { value: "perception", label: "Perception" },
+   { value: "lore", label: "Custom Lore" },
+]
+
+export function defaultRestrictionEntry() {
+   return {
+      kind: "spell",
+      slug: "",
+      rollOptions: "",
+      skill: "athletics",
+      lore: "",
+   }
+}
+
+export function normalizeRestrictionEntry(row) {
+   const value = row && typeof row === "object" ? row : {}
+   const kind = RESTRICTION_KIND_OPTIONS.some((option) => option.value === value.kind)
+      ? value.kind
+      : "spell"
+   const skill = RESTRICTION_SKILL_OPTIONS.some((option) => option.value === value.skill)
+      ? value.skill
+      : "athletics"
+   return {
+      kind,
+      slug: String(value.slug ?? ""),
+      rollOptions: String(value.rollOptions ?? ""),
+      skill,
+      lore: String(value.lore ?? ""),
+   }
+}
+
+export function renderRestrictionList(field, value) {
+   const rows = Array.isArray(value) && value.length
+      ? value.map(normalizeRestrictionEntry)
+      : [defaultRestrictionEntry()]
+   return `<div class="atw-restriction-list" data-atw-sprop="${field.key}">
+      ${rows.map((row, index) => restrictionRowHtml(row, index, rows.length > 1)).join("")}
+      <a data-action="add-restriction" class="atw-restriction-add">
+         <i class="fa-solid fa-plus"></i>
+         <span>Add restriction</span>
+      </a>
+   </div>`
+}
+
+export function restrictionRowHtml(row, index, canRemove = true) {
+   const current = normalizeRestrictionEntry(row)
+   const kindOptions = RESTRICTION_KIND_OPTIONS.map(
+      (option) =>
+         `<option value="${escapeHTML(option.value)}" ${option.value === current.kind ? "selected" : ""}>${escapeHTML(option.label)}</option>`,
+   ).join("")
+   const skillOptions = RESTRICTION_SKILL_OPTIONS.map(
+      (option) =>
+         `<option value="${escapeHTML(option.value)}" ${option.value === current.skill ? "selected" : ""}>${escapeHTML(option.label)}</option>`,
+   ).join("")
+   const showSlugFilters = ["spell", "strike", "item", "ability"].includes(current.kind)
+   const showSkill = current.kind === "skill"
+   const showLore = showSkill && current.skill === "lore"
+   const remove = canRemove
+      ? `<a data-action="remove-restriction" class="atw-restriction-remove">
+            <i class="fa-solid fa-minus"></i>
+         </a>`
+      : ""
+   const filters = showSlugFilters
+      ? `<input type="text" class="atw-restriction-slug" value="${escapeHTML(current.slug)}" placeholder="slug">
+         <input type="text" class="atw-restriction-roll-options" value="${escapeHTML(current.rollOptions)}" placeholder="roll options">`
+      : ""
+   const skill = showSkill
+      ? `<select class="atw-restriction-skill-select">${skillOptions}</select>
+         ${
+            showLore
+               ? `<input type="text" class="atw-restriction-lore" value="${escapeHTML(current.lore)}" placeholder="magic-lore">`
+               : ""
+         }
+         <input type="text" class="atw-restriction-roll-options" value="${escapeHTML(current.rollOptions)}" placeholder="roll options">`
+      : ""
+   return `<div class="atw-restriction-row" data-index="${index}">
+      <div class="atw-restriction-line">
+         <select class="atw-restriction-kind">${kindOptions}</select>
+         ${filters}
+         ${skill}
+         ${remove}
+      </div>
+   </div>`
+}
+
+export function refreshRestrictionList(wrapEl, item) {
+   if (!wrapEl?.parentNode) return
+   const li = wrapEl.closest(".atw-behavior")
+   if (!li) return
+   const id = li.dataset.id
+   const fieldKey = wrapEl.dataset.atwSprop
+   const a = readAutomation(item)
+   const entry = a.behaviors.find((b) => b.id === id)
+   if (!entry) return
+   const def = BEHAVIOR_CATALOG.find((b) => b.type === entry.type)
+   const field = def?.fields.find((f) => f.key === fieldKey)
+   if (!field) return
+   wrapEl.outerHTML = renderRestrictionList(field, entry.system?.[fieldKey] ?? [])
+}
+
 export function normalizeConditionValue(value) {
    if (typeof value === "string") return { slug: value, value: 1 }
    if (value && typeof value === "object") {
@@ -355,6 +497,7 @@ export function refreshConditionPicker(wrapEl, item) {
 
 export function damageRowHtml(d, idx) {
    const cur = d ?? {}
+   const rollOptionsPlaceholder = customRollOptionsPlaceholder()
    const dieOpts = DAMAGE_DIE_OPTIONS.map(
       (o) =>
          `<option value="${escapeHTML(o.value)}" ${o.value === (cur.dieSize ?? "-") ? "selected" : ""}>${escapeHTML(localize(o.label))}</option>`,
@@ -370,8 +513,6 @@ export function damageRowHtml(d, idx) {
          `<option value="${escapeHTML(o.value)}" ${o.value === (cur.category ?? "normal") ? "selected" : ""}>${localize(o.label)}</option>`,
    ).join("")
    const visual = getDamageTypeVisual(cur.damageType)
-   const extraOn = !!cur.extraRollOptionsEnabled
-
    const extraValue = String(cur.extraRollOptions ?? "")
 
    return `<div class="atw-damage-row" data-index="${idx}">
@@ -380,25 +521,17 @@ export function damageRowHtml(d, idx) {
       <span class="atw-damage-d">d</span>
       <select class="atw-damage-die">${dieOpts}</select>
       <i class="fa-solid ${escapeHTML(visual.icon)} atw-damage-icon" style="color: ${escapeHTML(visual.color)}" aria-hidden="true"></i>
-      <select class="atw-damage-category">${catOpts}</select>
       <select class="atw-damage-type">${typeOpts}</select>
+      <select class="atw-damage-category">${catOpts}</select>
       <a data-action="remove-damage" class="atw-damage-remove">
         <i class="fa-solid fa-minus"></i>
       </a>
     </div>
     <div class="atw-damage-extra-row">
-      ${
-         extraOn
-            ? `<input type="text" class="atw-damage-extra"
-                       placeholder="${escapeHTML(localize("PF2EATW.Field.RollOptionsExtraPlaceholder"))}"
-                       value="${escapeHTML(extraValue)}">`
-            : ""
-      }
-      <label class="atw-damage-extra-label">
-        <input type="checkbox" class="atw-damage-extra-toggle-input"
-               ${extraOn ? "checked" : ""}>
-        <span>${escapeHTML(localize("PF2EATW.Field.AppendRollOptions"))}</span>
-      </label>
+      <span class="atw-extra-roll-options-label">Custom roll options</span>
+      <input type="text" class="atw-damage-extra"
+             placeholder="${escapeHTML(rollOptionsPlaceholder)}"
+             value="${escapeHTML(extraValue)}">
     </div>
   </div>`
 }
@@ -657,22 +790,21 @@ export function renderDuration(field, value) {
 
 export function renderExtraRollOptions(field, value) {
    const cur =
-      value && typeof value === "object" ? value : { enabled: false, value: "" }
-   const enabled = !!cur.enabled
+      value && typeof value === "object" ? value : { enabled: true, value: "" }
    const text = String(cur.value ?? "")
    return `<div class="atw-extra-roll-options" data-atw-sprop="${field.key}">
-    ${
-       enabled
-          ? `<input type="text" class="atw-extra-roll-options-input"
-                       placeholder="${escapeHTML(localize("PF2EATW.Field.RollOptionsExtraPlaceholder"))}"
-                       value="${escapeHTML(text)}">`
-          : ""
-    }
-    <label class="atw-inline-checkbox atw-extra-roll-options-label">
-      <input type="checkbox" class="atw-extra-roll-options-enabled" ${enabled ? "checked" : ""}>
-      <span>${escapeHTML(localize("PF2EATW.Field.AppendRollOptions"))}</span>
-    </label>
+    <span class="atw-extra-roll-options-label">Custom roll options</span>
+    <input type="text" class="atw-extra-roll-options-input"
+           placeholder="${escapeHTML(customRollOptionsPlaceholder())}"
+           value="${escapeHTML(text)}">
   </div>`
+}
+
+function customRollOptionsPlaceholder() {
+   return localize("PF2EATW.Field.RollOptionsExtraPlaceholder").replace(
+      /^\s*e\.g\.\s*/i,
+      "",
+   )
 }
 
 export function validateRuleJson(raw) {

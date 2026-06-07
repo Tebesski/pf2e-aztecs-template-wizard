@@ -20,6 +20,9 @@ import {
    dealDamageScriptSource,
    displayScrollingTextScriptSource,
    executeMacroScriptSource,
+   healScriptSource,
+   moveTargetsScriptSource,
+   restrictActionsScriptSource,
    sendChatMessageScriptSource,
    addIRWScriptSource,
 } from "./script-sources/actions.mjs"
@@ -59,6 +62,20 @@ const GRANT_TYPES = new Set([
 const REMOVAL_TYPES = new Set(["removeEffect", "removeCondition"])
 const EFFECT_LIFECYCLE_TYPES = new Set([...GRANT_TYPES, ...REMOVAL_TYPES])
 const LIFECYCLE_TRIGGER_KEYS = new Set(["whileAdjacent", "whileWithin"])
+const RESTRICT_LIFECYCLE_TRIGGER_KEYS = new Set(["whileAdjacent", "whileWithin"])
+
+function normalizeRestrictRuntimeTriggers(entry) {
+   if (entry?.type !== "restrictActions") return
+   if (!entry.system || typeof entry.system !== "object") entry.system = {}
+   if (entry.system.duration?.enabled) return
+   const triggers = Array.isArray(entry.system.triggers)
+      ? entry.system.triggers
+      : []
+   const valid = triggers.filter((trigger) =>
+      RESTRICT_LIFECYCLE_TRIGGER_KEYS.has(trigger),
+   )
+   entry.system.triggers = valid.length ? valid : ["whileWithin"]
+}
 
 function normalizeCondition(c) {
    if (typeof c === "string") return { slug: c, value: 1 }
@@ -155,6 +172,67 @@ const BUILDERS = {
       }
    },
 
+   heal(s, automation, item, fullEntry) {
+      const fullSystem = fullEntry?.system ?? {}
+      const target =
+         Array.isArray(fullSystem.target) && fullSystem.target.length
+            ? fullSystem.target.slice()
+            : ["all"]
+      return {
+         __overrideType: "executeScript",
+         source: healScriptSource({
+            amount: s.amount ?? "5",
+            healingType: s.healingType ?? "untyped",
+            target,
+            sourceItemUuid: item?.uuid ?? null,
+            flavor: automation?.label?.trim() || item?.name || "Region Healing",
+         }),
+      }
+   },
+
+   moveTargets(s, automation, item, fullEntry) {
+      const fullSystem = fullEntry?.system ?? {}
+      const target =
+         Array.isArray(fullSystem.target) && fullSystem.target.length
+            ? fullSystem.target.slice()
+            : ["all"]
+      return {
+         __overrideType: "executeScript",
+         source: moveTargetsScriptSource({
+            direction: s.direction === "toward" ? "toward" : "away",
+            distance: Math.max(0, Number(s.distance) || 0),
+            target,
+            sourceItemUuid: item?.uuid ?? null,
+         }),
+      }
+   },
+
+   restrictActions(s, automation, item, fullEntry) {
+      const restrictions = Array.isArray(s.restrictions) ? s.restrictions : []
+      if (!restrictions.length) return null
+      const fullSystem = fullEntry?.system ?? {}
+      const target =
+         Array.isArray(fullSystem.target) && fullSystem.target.length
+            ? fullSystem.target.slice()
+            : ["all"]
+      const triggers = Array.isArray(fullSystem.triggers)
+         ? fullSystem.triggers.slice()
+         : []
+      const lifecycle = hasLifecycleTrigger(triggers) && !s.duration?.enabled
+      return {
+         __overrideType: "executeScript",
+         source: restrictActionsScriptSource({
+            restrictions,
+            duration: s.duration ?? { enabled: false, amount: 1, unit: "rounds" },
+            target,
+            sourceItemUuid: item?.uuid ?? null,
+            flavor: automation?.label?.trim() || item?.name || "Restriction",
+            triggerGroupKey: lifecycle ? triggerGroupKey(triggers) : "",
+            lifecycle,
+         }),
+      }
+   },
+
    rollDice(s, automation, item, fullEntry) {
       const dice = s.dice ?? {}
       const diceCount = Math.max(1, Number(dice.diceCount) || 1)
@@ -197,7 +275,7 @@ const BUILDERS = {
             ? s.extraRollOptions
             : null
       const extraRollOptionsTags =
-         ero && ero.enabled
+         ero && (ero.enabled || String(ero.value ?? "").trim())
             ? String(ero.value ?? "")
                  .split(",")
                  .map((x) => x.trim())
@@ -234,7 +312,7 @@ const BUILDERS = {
             ? s.extraRollOptions
             : null
       const extraRollOptionsTags =
-         ero && ero.enabled
+         ero && (ero.enabled || String(ero.value ?? "").trim())
             ? String(ero.value ?? "")
                  .split(",")
                  .map((x) => x.trim())
@@ -331,11 +409,10 @@ const BUILDERS = {
 
 function buildSingleBehaviorData(entry, automation, item) {
    if (!entry?.enabled) return null
+   normalizeRestrictRuntimeTriggers(entry)
    const builder = BUILDERS[entry.type]
    if (!builder) {
-      console.warn(
-         `[${MODULE_ID}] No builder for behavior type "${entry.type}"`,
-      )
+      undefined
       return null
    }
    const cleanSystem = {}
@@ -362,7 +439,13 @@ function buildSingleBehaviorData(entry, automation, item) {
          entry.events && entry.events.length
             ? entry.events
             : (catalogDef?.events ?? [])
-      system.events = deriveEvents(entry.system?.triggers, fallback)
+      system.events = hasLifecycleTrigger(entry.system?.triggers)
+         ? lifecycleEvents(entry.system.triggers)
+         : deriveEvents(entry.system?.triggers, fallback)
+   }
+   const meta = extractMeta(entry)
+   if (hasLifecycleTrigger(entry.system?.triggers)) {
+      meta.triggerGroupKey = triggerGroupKey(entry.system.triggers)
    }
 
    return {
@@ -374,7 +457,7 @@ function buildSingleBehaviorData(entry, automation, item) {
             automationId: automation.id ?? null,
             itemUuid: item?.uuid ?? null,
             behaviorType: entry.type,
-            ...extractMeta(entry),
+            ...meta,
          },
       },
    }
@@ -428,11 +511,7 @@ function extractGrantSpec(entry) {
             const obj = JSON.parse(raw)
             if (obj && typeof obj === "object") parsed.push(obj)
          } catch (e) {
-            console.warn(
-               `[${MODULE_ID}] applyRuleElement: skipping invalid rule JSON`,
-               raw,
-               e,
-            )
+            undefined
          }
       }
       if (parsed.length === 0) return null

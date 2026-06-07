@@ -86,7 +86,7 @@ if (__api?.queueSkillCheckCard) {
     });
     if (queued) return;
   } catch (e) {
-    console.warn("[atw] skill-check card queue failed", e);
+    undefined;
   }
 }
 
@@ -101,7 +101,7 @@ try {
     flavor: FLAVOR
   });
 } catch (e) {
-  console.error("[atw] requestPlayerSkillRoll failed", e);
+  undefined;
   return;
 }
 if (!outcome) return;
@@ -138,7 +138,7 @@ if (__grantFamily.length > 0) {
       await __dispatchSkillGrantFamily(__grantFamily, token, srcItem, region);
     }
   } catch (e) {
-    console.error("[atw] skill grant-family dispatch failed", e);
+    undefined;
   }
 }
 
@@ -163,7 +163,7 @@ for (const c of __other) {
     }
     await dispatchConsequence(c, token, srcItem, region, 0);
   } catch (e) {
-    console.error("[atw] skill consequence dispatch failed", c, e);
+    undefined;
   }
 }
 

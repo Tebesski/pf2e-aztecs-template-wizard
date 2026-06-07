@@ -61,9 +61,16 @@ Each configured Item can define:
    - Single Wall mode allows for placing a single wall on the defined place of the region (top, bottom, left, right).
    - Destructible wall mode creates liked wall actors with configurable HP, AC, hardness, immunities, resistances, weaknesses, and wall Strikes. On destroying the wall actor, the wall is also destroyed.
    - A custom macro in module compendium allows for creating the wall actor out of just a regular wall.
+- Heal
+- Move
+- Restrict (Striking, Spellcasting, etc)
 
 These behaviors support custom chat cards, target rows, rerolls, damage application controls, save consequences, skill consequences, and nested consequences where appropriate.
 Attached objects (walls, sounds, tiles, light sources, etc) stay linked to the template region and moves/rotates with the region.
+
+## Heightening
+
+Allows for Heightening for Behaviours and Duration
 
 ## Chat Cards
 
@@ -77,6 +84,14 @@ Supported custom cards include:
 - Choice Set checks.
 
 Cards can show item descriptions, roll results, save outcomes, damage totals, target rows, reroll buttons, damage application buttons, and inline consequence summaries without flooding chat with separate system messages.
+
+## QoL
+
+- Template placement range limits
+- Custom dynamic template placement buttons on chat cards
+- Scene-control template browser that allows to place the templates independently from items
+- Re-roll via heropoint in special chat cards by RMB on the roll result number
+- Sustain automation
 
 ## Templates Compendium
 

@@ -47,6 +47,16 @@ export function seedConsequenceDefaults(c, type) {
             ]
          }
          break
+      case "heal":
+         if (c.amount == null) c.amount = "5"
+         if (!["untyped", "vitality", "void"].includes(c.healingType)) {
+            c.healingType = "untyped"
+         }
+         break
+      case "move":
+         if (!["toward", "away"].includes(c.direction)) c.direction = "away"
+         if (c.distance == null) c.distance = 5
+         break
       case "applyCondition":
       case "removeCondition":
          if (!c.condition || typeof c.condition !== "object") {
@@ -159,6 +169,50 @@ export function consequenceBodyHtml(c, itemContext = null) {
           <span>${escapeHTML(localize("PF2EATW.Field.AddDamage"))}</span>
         </a>
       </div>`
+      }
+      case "heal": {
+         const type = ["untyped", "vitality", "void"].includes(c.healingType)
+            ? c.healingType
+            : "untyped"
+         const typeOpts = [
+            { value: "untyped", label: "Untyped" },
+            { value: "vitality", label: "Vitality" },
+            { value: "void", label: "Void" },
+         ].map(
+            (option) =>
+               `<option value="${option.value}" ${option.value === type ? "selected" : ""}>${option.label}</option>`,
+         ).join("")
+         return `<div class="atw-consequence-heal">
+            <label class="atw-row">
+               <span class="atw-row-label">Amount</span>
+               <input type="text" class="atw-consequence-heal-amount" value="${escapeHTML(c.amount ?? "5")}" placeholder="5">
+            </label>
+            <label class="atw-row">
+               <span class="atw-row-label">Type</span>
+               <select class="atw-consequence-heal-type">${typeOpts}</select>
+            </label>
+         </div>`
+      }
+      case "move": {
+         const direction = c.direction === "toward" ? "toward" : "away"
+         const directionOpts = [
+            { value: "toward", label: "Toward centre" },
+            { value: "away", label: "Away from centre" },
+         ].map(
+            (option) =>
+               `<option value="${option.value}" ${option.value === direction ? "selected" : ""}>${option.label}</option>`,
+         ).join("")
+         return `<div class="atw-consequence-move">
+            <label class="atw-row">
+               <span class="atw-row-label">Direction</span>
+               <select class="atw-consequence-move-direction">${directionOpts}</select>
+            </label>
+            <label class="atw-row">
+               <span class="atw-row-label">Distance</span>
+               <input type="number" class="atw-consequence-move-distance" min="0" step="5" value="${escapeHTML(c.distance ?? 5)}">
+               <span class="atw-row-unit">ft</span>
+            </label>
+         </div>`
       }
       case "applyEffect":
       case "removeEffect": {
@@ -345,7 +399,7 @@ export function consequenceBodyHtml(c, itemContext = null) {
             <input type="text" class="atw-expression-input atw-consequence-saveDC"
                    list="${dcListId}"
                    value="${escapeHTML(dcValue)}"
-                   placeholder="15  or  @placer.system.attributes.classOrSpellDC.value">
+                   placeholder="15 or @placer.system.attributes.spellDC.value">
             <datalist id="${dcListId}">${dcSuggestOpts}</datalist>
             <span class="atw-expression-preview"${exprPreview === "" ? " hidden" : ""}>${escapeHTML(exprPreview)}</span>
           </div>
@@ -370,7 +424,7 @@ export function consequenceBodyHtml(c, itemContext = null) {
          const loreHtml =
             skill === "lore"
                ? `<input type="text" class="atw-consequence-skillLore"
-                  placeholder="${escapeHTML(localize("PF2EATW.Field.LoreNamePlaceholder"))}"
+                  placeholder="magic-lore"
                   value="${escapeHTML(String(c.lore ?? ""))}">`
                : ""
          const nestedRows = (
@@ -397,7 +451,7 @@ export function consequenceBodyHtml(c, itemContext = null) {
             <input type="text" class="atw-expression-input atw-consequence-skillDC"
                    list="${dcListId}"
                    value="${escapeHTML(dcValue)}"
-                   placeholder="15  or  @placer.system.attributes.classOrSpellDC.value">
+                   placeholder="15 or @placer.system.attributes.spellDC.value">
             <datalist id="${dcListId}">${dcSuggestOpts}</datalist>
             <span class="atw-expression-preview"${exprPreview === "" ? " hidden" : ""}>${escapeHTML(exprPreview)}</span>
           </div>

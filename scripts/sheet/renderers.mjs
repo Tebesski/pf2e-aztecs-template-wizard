@@ -15,6 +15,10 @@ import {
    checkDependency,
    computeExpressionPreview,
 } from "./expression-preview.mjs"
+import {
+   renderExpirationHeightenList,
+   renderHeightenListForAutomation,
+} from "./heightening-renderers.mjs"
 export {
    checkDependency,
    computeExpressionPreview,
@@ -36,6 +40,7 @@ import {
    renderDuration,
    renderExtraRollOptions,
    renderRuleElementList,
+   renderRestrictionList,
 } from "./input-renderers.mjs"
 import { renderChoiceList } from "./choice-renderers.mjs"
 import {
@@ -106,8 +111,13 @@ export {
    ruleElementRowHtml,
    refreshRuleElementList,
    updateRuleRowBadge,
+   defaultRestrictionEntry,
+   normalizeRestrictionEntry,
+   renderRestrictionList,
+   restrictionRowHtml,
+   refreshRestrictionList,
 } from "./input-renderers.mjs"
-export function renderTabContent(item) {
+export function renderTabContent(item, { showItemActions = true } = {}) {
    const automation = readAutomation(item)
    const labelPlaceholder = escapeHTML(item.name ?? "")
    const isUnlimited = automation.expiration.unit === "unlimited"
@@ -129,9 +139,10 @@ export function renderTabContent(item) {
    const rows = (automation.behaviors ?? [])
       .map((entry) => behaviorRowHtml(entry, item))
       .join("")
+   const placementRangeHtml = renderPlacementRangeRow(automation)
 
-   return `
-    <section class="atw-section">
+   const itemActions = showItemActions
+      ? `
       <div class="atw-row atw-row-actions">
         <a data-action="atw-export">
           <i class="fa-solid fa-file-export"></i> ${localize("PF2EATW.IO.Export")}
@@ -147,35 +158,53 @@ export function renderTabContent(item) {
         <a data-action="atw-import-from-compendium">
           <i class="fa-solid fa-book-open"></i> ${localize("PF2EATW.Compendium.ImportFrom")}
         </a>
+      </div>`
+      : ""
+
+   return `
+    <section class="atw-section">
+      ${itemActions}
+      <div class="atw-row atw-row-toggle">
+        <label class="atw-checkbox-label">
+          <input type="checkbox" data-atw-path="enabled" ${automation.enabled ? "checked" : ""}>
+          <span>${localize("PF2EATW.AutomationEnabled")}</span>
+        </label>
       </div>
-      <label class="atw-row atw-row-toggle">
-        <input type="checkbox" data-atw-path="enabled" ${automation.enabled ? "checked" : ""}>
-        <span>${localize("PF2EATW.AutomationEnabled")}</span>
-      </label>
       <label class="atw-row">
         <span class="atw-row-label">${localize("PF2EATW.Label")}</span>
         <input type="text" data-atw-path="label"
                value="${escapeHTML(automation.label ?? "")}"
                placeholder="${labelPlaceholder}">
       </label>
+      ${placementRangeHtml}
       ${renderTemplateShapesInline(automation)}
     </section>
 
     <fieldset class="atw-section">
       <legend>${localize("PF2EATW.Expiration")}</legend>
-      <label class="atw-row atw-row-toggle">
-        <input type="checkbox" data-atw-path="expiration.enabled"
-               ${automation.expiration.enabled ? "checked" : ""}>
-        <span>${localize("PF2EATW.ExpirationEnabled")}
-          <i class="fa-solid fa-circle-info atw-tooltip-icon"
-             data-tooltip="${escapeHTML(localize("PF2EATW.Tooltip.RegionExpiration"))}"></i>
-        </span>
-      </label>
+      <div class="atw-row atw-row-toggle">
+        <label class="atw-checkbox-label">
+          <input type="checkbox" data-atw-path="expiration.enabled"
+                 ${automation.expiration.enabled ? "checked" : ""}>
+          <span>${localize("PF2EATW.ExpirationEnabled")}
+            <i class="fa-solid fa-circle-info atw-tooltip-icon"
+               data-tooltip="${escapeHTML(localize("PF2EATW.Tooltip.RegionExpiration"))}"></i>
+          </span>
+        </label>
+      </div>
       <div class="atw-row atw-expiration ${automation.expiration.enabled ? "" : "atw-disabled"}">
         <input type="number" data-atw-path="expiration.amount"
                min="0" step="1" value="${automation.expiration.amount}"
                ${isUnlimited ? 'style="display:none"' : ""}>
         <select data-atw-path="expiration.unit">${units}</select>
+      </div>
+      ${renderExpirationHeightenList(automation)}
+      <div class="atw-row atw-row-toggle">
+        <label class="atw-checkbox-label">
+          <input type="checkbox" data-atw-path="expiration.sustained"
+                 ${automation.expiration.sustained ? "checked" : ""}>
+          <span>Sustained</span>
+        </label>
       </div>
     </fieldset>
 
@@ -235,10 +264,12 @@ export function renderAdvancedSection(automation) {
           <span class="atw-row-label">${localize("PF2EATW.AdvancedField.HighlightMode")}</span>
           <select data-atw-path="advanced.highlightMode">${hlOpts}</select>
         </label>
-        <label class="atw-row atw-row-toggle">
-          <input type="checkbox" data-atw-path="advanced.displayMeasurements" ${adv.displayMeasurements ? "checked" : ""}>
-          <span>${localize("PF2EATW.AdvancedField.DisplayMeasurements")}</span>
-        </label>
+        <div class="atw-row atw-row-toggle">
+          <label class="atw-checkbox-label">
+            <input type="checkbox" data-atw-path="advanced.displayMeasurements" ${adv.displayMeasurements ? "checked" : ""}>
+            <span>${localize("PF2EATW.AdvancedField.DisplayMeasurements")}</span>
+          </label>
+        </div>
       </div>`
       : ""
 
@@ -248,11 +279,13 @@ export function renderAdvancedSection(automation) {
       <span>${localize("PF2EATW.Advanced")}</span>
     </a>
     <div class="atw-accordion-body">
-      <label class="atw-row atw-row-toggle">
-        <input type="checkbox" data-atw-path="attachable"
-               ${automation.attachable ? "checked" : ""}>
-        <span>${localize("PF2EATW.Attachable")}</span>
-      </label>
+      <div class="atw-row atw-row-toggle">
+        <label class="atw-checkbox-label">
+          <input type="checkbox" data-atw-path="attachable"
+                 ${automation.attachable ? "checked" : ""}>
+          <span>${localize("PF2EATW.Attachable")}</span>
+        </label>
+      </div>
       <p class="atw-hint">${localize("PF2EATW.AttachableHint")}</p>
       <div class="atw-row atw-contiguous-row">
         <label class="atw-contiguous-toggle">
@@ -266,14 +299,37 @@ export function renderAdvancedSection(automation) {
                ${contiguous.enabled ? "" : "disabled"}>
       </div>
       <p class="atw-hint">${localize("PF2EATW.ContiguousHint")}</p>
-      <label class="atw-row atw-row-toggle">
-        <input type="checkbox" data-atw-path="advanced.enabled"
-               ${adv.enabled ? "checked" : ""}>
-        <span>${localize("PF2EATW.AdvancedEnabled")}</span>
-      </label>
+      <div class="atw-row atw-row-toggle">
+        <label class="atw-checkbox-label">
+          <input type="checkbox" data-atw-path="advanced.enabled"
+                 ${adv.enabled ? "checked" : ""}>
+          <span>${localize("PF2EATW.AdvancedEnabled")}</span>
+        </label>
+      </div>
       ${overrideGridHtml}
     </div>
   </div>`
+}
+
+function renderPlacementRangeRow(automation) {
+   const placementRange =
+      automation.placementRange && typeof automation.placementRange === "object"
+         ? automation.placementRange
+         : { enabled: false, max: 0 }
+   const placementRangeMax = Math.max(0, Number(placementRange.max) || 0)
+   return `<div class="atw-row atw-placement-range-row">
+     <label class="atw-contiguous-toggle">
+       <input type="checkbox" data-atw-path="placementRange.enabled"
+              ${placementRange.enabled ? "checked" : ""}>
+       <span>Max placement range</span>
+     </label>
+     <input type="number" min="0" step="5" data-atw-path="placementRange.max"
+            data-atw-path-type="number"
+            aria-label="Max placement range"
+            class="atw-placement-range-max" value="${placementRangeMax}"
+            ${placementRange.enabled ? "" : "disabled"}>
+     <span class="atw-row-unit">ft</span>
+   </div>`
 }
 
 export function renderTemplateShapesInline(automation) {
@@ -350,6 +406,7 @@ export function templateShapeRowHtml(v, idx, total) {
 export function behaviorRowHtml(entry, item = null) {
    const def = BEHAVIOR_CATALOG.find((b) => b.type === entry.type)
    const collapsed = entry.collapsed ? "atw-collapsed" : ""
+   const automation = item ? readAutomation(item) : null
 
    const headerOf = (label, iconClass) => `
     <header class="atw-behavior-header">
@@ -374,13 +431,21 @@ export function behaviorRowHtml(entry, item = null) {
       .map((f) => {
          const v = entry.system?.[f.key] ?? f.default
          const hide = f.dependsOn && !checkDependency(entry.system, f.dependsOn)
-         return fieldHtml(f, v, hide, entry.system, item)
+     return fieldHtml(f, v, hide, entry.system, item, entry.type)
       })
       .join("")
 
+   const fieldsCollapsed = entry.fieldsCollapsed ? "atw-accordion-collapsed" : ""
    return `<li class="atw-behavior ${collapsed}" data-id="${entry.id}">
     ${headerOf(localize(def.label), def.icon)}
-    <div class="atw-behavior-fields">${fieldsHtml}</div>
+    <div class="atw-behavior-fields atw-accordion ${fieldsCollapsed}">
+      <a class="atw-accordion-header" data-action="toggle-behavior-fields">
+        <i class="fa-solid ${entry.fieldsCollapsed ? "fa-chevron-down" : "fa-chevron-up"} atw-accordion-chevron"></i>
+        <span>Fields</span>
+      </a>
+      <div class="atw-accordion-body atw-behavior-fields-body">${fieldsHtml}</div>
+    </div>
+    ${renderHeightenListForAutomation(entry, automation)}
   </li>`
 }
 
@@ -390,6 +455,7 @@ export function fieldHtml(
    hidden = false,
    systemForShowWhen = null,
    itemContext = null,
+   behaviorType = null,
 ) {
    if (field.showWhen && systemForShowWhen) {
       const ref = systemForShowWhen[field.showWhen.field]
@@ -410,8 +476,8 @@ export function fieldHtml(
    switch (field.type) {
       case "text":
          input = `<input id="${id}" type="text" data-atw-sprop="${field.key}"
-                 value="${escapeHTML(value ?? "")}"
-                 placeholder="${escapeHTML(field.placeholder ? localize(field.placeholder) : "")}">`
+                  value="${escapeHTML(value ?? "")}"
+                  placeholder="${escapeHTML(fieldPlaceholder(field))}">`
          break
       case "expression": {
          const exprPreview = computeExpressionPreview(
@@ -443,9 +509,9 @@ export function fieldHtml(
             .join("")
          input = `<div class="atw-expression-wrap">
         <input id="${id}" type="text" class="atw-expression-input" data-atw-sprop="${field.key}"
-               list="${listId}"
-               value="${escapeHTML(String(value ?? ""))}"
-               placeholder="${escapeHTML(field.placeholder ? localize(field.placeholder) : "10  or  @placer.system.attributes.spellDC.value - 10")}">
+           list="${listId}"
+           value="${escapeHTML(String(value ?? ""))}"
+           placeholder="${escapeHTML(field.placeholder ? localize(field.placeholder) : expressionSuggestionPlaceholder(field))}">
         <datalist id="${listId}">${suggestOpts}</datalist>
         <span class="atw-expression-preview"${exprPreview === "" ? " hidden" : ""}>${escapeHTML(exprPreview)}</span>
       </div>`
@@ -499,7 +565,10 @@ export function fieldHtml(
          break
       }
       case "tagPicker":
-         input = renderTagPicker(field, value)
+         input = renderTagPicker(field, value, {
+            behaviorType,
+            system: systemForShowWhen ?? {},
+         })
          break
       case "uuidList":
          input = renderUuidList(field, value)
@@ -543,6 +612,9 @@ export function fieldHtml(
       case "ruleElementList":
          input = renderRuleElementList(field, value)
          break
+      case "restrictionList":
+         input = renderRestrictionList(field, value)
+         break
       case "consequenceList":
          input = renderConsequenceList(field, value, itemContext)
          break
@@ -575,4 +647,17 @@ export function fieldHtml(
       return `<div class="atw-field" data-field-key="${field.key}" ${hide}>${input}${hint}</div>`
    }
    return `<div class="atw-field" data-field-key="${field.key}" ${hide}>${label}${input}${hint}</div>`
+}
+
+function fieldPlaceholder(field) {
+   const text = field?.placeholder ? localize(field.placeholder) : ""
+   if (["rollOptions", "rollOptionsExclude"].includes(field?.key)) {
+      return text.replace(/^\s*e\.g\.\s*/i, "")
+   }
+   return text
+}
+
+function expressionSuggestionPlaceholder(field) {
+   if (field?.key === "dc") return "15 or @placer.system.attributes.spellDC.value"
+   return "10 or @placer.system.attributes.spellDC.value - 10"
 }

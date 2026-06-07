@@ -2,16 +2,19 @@ import {
    FLAG_SCOPE,
    MODULE_ID,
    SUPPORTED_ITEM_TYPES,
-   defaultAutomation,
 } from "../data.mjs"
 import { escapeHTML, localize, renderModuleTemplate } from "../common/html.mjs"
 import {
-   promptForAutomationJson,
-   promptForImportJson,
-   promptForSlug,
+   promptForImportFile,
 } from "./templates-dialogs.mjs"
 import { confirmDelete, confirmHtml } from "./confirm-dialogs.mjs"
 import { isTemplateAutomation } from "./templates-automation.mjs"
+import { TemplateEntryEditorApp } from "./template-entry-editor.mjs"
+import { normalizeAutomation } from "../sheet/automation-storage.mjs"
+import {
+   normalizeEntrySlug,
+   sanitizeTemplateEntry,
+} from "./template-entry-item.mjs"
 export { confirmDelete, confirmHtml } from "./confirm-dialogs.mjs"
 export {
    cloneAutomation,
@@ -20,10 +23,14 @@ export {
    isTemplateAutomation,
    mergeAutomationOntoItem,
 } from "./templates-automation.mjs"
-export { promptForImportJson, promptForSlug } from "./templates-dialogs.mjs"
+export {
+   promptForImportFile,
+   promptForImportJson,
+   promptForSlug,
+} from "./templates-dialogs.mjs"
 const COMPENDIUM_SETTING = "templatesCompendium"
 
-function getTemplatesCompendium() {
+export function getTemplatesCompendium() {
    try {
       const raw = game.settings.get(MODULE_ID, COMPENDIUM_SETTING)
       if (Array.isArray(raw)) return raw
@@ -35,7 +42,7 @@ function getTemplatesCompendium() {
    return []
 }
 
-async function setTemplatesCompendium(entries) {
+export async function setTemplatesCompendium(entries) {
    if (!Array.isArray(entries)) entries = []
    await game.settings.set(MODULE_ID, COMPENDIUM_SETTING, entries)
    if (game.ready && canAutoAssignTemplates()) {
@@ -43,7 +50,7 @@ async function setTemplatesCompendium(entries) {
          entries,
          reason: "templates-compendium-updated",
       }).catch((e) =>
-         console.warn(`[${MODULE_ID}] auto-assign reconcile failed`, e),
+         undefined,
       )
    }
 }
@@ -138,6 +145,7 @@ export async function saveAutomationToCompendium(item, automation, info) {
    const slug = info?.slug ?? ""
    const name = info?.name || item?.name || "Untitled"
    const entries = getTemplatesCompendium()
+   const cleanAutomation = normalizeAutomation(automation, item)
 
    if (slug) {
       const existingIdx = entries.findIndex((e) => e.slug === slug)
@@ -152,14 +160,14 @@ export async function saveAutomationToCompendium(item, automation, info) {
             id: entries[existingIdx].id ?? foundry.utils.randomID(),
             slug,
             name,
-            automation: foundry.utils.deepClone(automation),
+            automation: foundry.utils.deepClone(cleanAutomation),
          }
       } else {
          entries.push({
             id: foundry.utils.randomID(),
             slug,
             name,
-            automation: foundry.utils.deepClone(automation),
+            automation: foundry.utils.deepClone(cleanAutomation),
          })
       }
    } else {
@@ -167,7 +175,7 @@ export async function saveAutomationToCompendium(item, automation, info) {
          id: foundry.utils.randomID(),
          slug: "",
          name,
-         automation: foundry.utils.deepClone(automation),
+         automation: foundry.utils.deepClone(cleanAutomation),
       })
    }
    await setTemplatesCompendium(entries)
@@ -188,12 +196,10 @@ export class TemplatesCompendiumApp extends (foundry.applications?.api
       actions: {
          "atw-delete": TemplatesCompendiumApp._onDelete,
          "atw-edit": TemplatesCompendiumApp._onEdit,
-         "atw-edit-json": TemplatesCompendiumApp._onEditJson,
          "atw-export": TemplatesCompendiumApp._onExport,
          "atw-bulk-export": TemplatesCompendiumApp._onBulkExport,
          "atw-bulk-import": TemplatesCompendiumApp._onBulkImport,
          "atw-new-blank": TemplatesCompendiumApp._onNewBlank,
-         "atw-import-one": TemplatesCompendiumApp._onImportOne,
       },
    }
 
@@ -208,17 +214,13 @@ export class TemplatesCompendiumApp extends (foundry.applications?.api
             behaviorCount: entry.automation?.behaviors?.length ?? 0,
          })),
          newBlankLabel: localize("PF2EATW.Compendium.NewBlank"),
-         addNewLabel: localize("PF2EATW.Compendium.AddNew"),
          bulkExportLabel: localize("PF2EATW.Compendium.BulkExport"),
-         bulkImportLabel: localize("PF2EATW.Compendium.BulkImport"),
+         bulkImportLabel: "Import",
          nameLabel: localize("PF2EATW.Compendium.NameLabel"),
          slugLabel: localize("PF2EATW.Compendium.SlugLabel"),
          behaviorCountLabel: localize("PF2EATW.Compendium.BehaviorCount"),
          emptyLabel: localize("PF2EATW.Compendium.Empty"),
          editTooltip: localize("PF2EATW.Compendium.EditTooltip"),
-         editAutomationTooltip: localize(
-            "PF2EATW.Compendium.EditAutomationTooltip",
-         ),
          exportTooltip: localize("PF2EATW.Compendium.ExportOneTooltip"),
          deleteTooltip: localize("PF2EATW.Compendium.DeleteTooltip"),
       })
@@ -254,67 +256,14 @@ export class TemplatesCompendiumApp extends (foundry.applications?.api
       const idx = entries.findIndex((e) => e.id === id)
       if (idx < 0) return
       const entry = entries[idx]
-      const info = await promptForSlug({
-         name: entry.name,
-         system: { slug: entry.slug },
-      })
-      if (info === null) return
-
-      if (info.slug) {
-         const collision = entries.findIndex(
-            (e) => e.id !== id && e.slug === info.slug,
-         )
-         if (collision >= 0) {
-            const overwrite = await confirmHtml(
-               localize("PF2EATW.Compendium.SlugConflictTitle"),
-               `<p>${escapeHTML(localize("PF2EATW.Compendium.SlugConflict").replace("{slug}", info.slug))}</p>`,
-               false,
-            )
-            if (!overwrite) return
-            entries.splice(collision, 1)
-         }
-      }
-      entries[idx] = {
-         ...entry,
-         name: info.name || entry.name,
-         slug: info.slug,
-      }
-      await setTemplatesCompendium(entries)
-      this.render({ force: true })
-   }
-
-   static async _onEditJson(_event, target) {
-      const tr = target.closest("tr[data-id]")
-      if (!tr) return
-      const id = tr.dataset.id
-      const entries = getTemplatesCompendium()
-      const idx = entries.findIndex((e) => e.id === id)
-      if (idx < 0) return
-      const entry = entries[idx]
-      const json = await promptForAutomationJson(entry.automation, {
-         title: `${localize("PF2EATW.Compendium.EditAutomation")} — ${entry.name ?? "Template"}`,
-      })
-      if (!json) return
-      let parsed
-      try {
-         parsed = JSON.parse(json)
-      } catch (_e) {
-         ui.notifications?.error("Invalid JSON.")
-         return
-      }
-      const automation =
-         parsed?.automation && isTemplateAutomation(parsed.automation)
-            ? parsed.automation
-            : parsed
-      if (!isTemplateAutomation(automation)) {
-         ui.notifications?.error(
-            "That JSON does not contain Template Wizard automation.",
-         )
-         return
-      }
-      entries[idx] = { ...entry, automation }
-      await setTemplatesCompendium(entries)
-      this.render({ force: true })
+      new TemplateEntryEditorApp({
+         entry,
+         onSave: (updated) =>
+            saveCompendiumEntryFromEditor(updated, {
+               originalId: id,
+               app: this,
+            }),
+      }).render({ force: true })
    }
 
    static async _onExport(_event, target) {
@@ -353,7 +302,7 @@ export class TemplatesCompendiumApp extends (foundry.applications?.api
    }
 
    static async _onBulkImport(_event, _target) {
-      const json = await promptForImportJson()
+      const json = await promptForImportFile()
       if (!json) return
       let parsed
       try {
@@ -362,114 +311,178 @@ export class TemplatesCompendiumApp extends (foundry.applications?.api
          ui.notifications?.error("Invalid JSON.")
          return
       }
-      if (!Array.isArray(parsed)) {
-         ui.notifications?.error("Expected an array of template entries.")
+      const sanitized = importedTemplateEntries(parsed)
+      if (sanitized.length === 0) {
+         ui.notifications?.error("Expected template entries.")
          return
       }
-      const overwrite = await confirmDelete(
-         localize("PF2EATW.Compendium.BulkImportReplace"),
-      )
-      if (!overwrite) return
-
-      const sanitized = parsed
-         .filter(
-            (e) =>
-               e &&
-               typeof e === "object" &&
-               e.automation &&
-               Array.isArray(e.automation.behaviors),
+      const current = getTemplatesCompendium()
+      const collisions = importedSlugCollisions(current, sanitized)
+      let replaceCollisions = false
+      if (collisions.length > 0) {
+         replaceCollisions = await confirmHtml(
+            "Replace matching templates?",
+            collisionPromptHtml(collisions),
+            false,
          )
-         .map((e) => ({
-            id: e.id ?? foundry.utils.randomID(),
-            slug: String(e.slug ?? "").toLowerCase(),
-            name: String(e.name ?? "Untitled"),
-            automation: e.automation,
-         }))
-      await setTemplatesCompendium(sanitized)
+      }
+      const result = mergeImportedTemplateEntries(
+         current,
+         sanitized,
+         replaceCollisions,
+      )
+      await setTemplatesCompendium(result.entries)
+      ui.notifications?.info(
+         `Imported ${result.added + result.replaced} template${result.added + result.replaced === 1 ? "" : "s"}.` +
+            (result.replaced ? ` Replaced ${result.replaced}.` : "") +
+            (result.skipped ? ` Skipped ${result.skipped}.` : ""),
+      )
       this.render({ force: true })
    }
 
    static async _onNewBlank(_event, _target) {
-      const info = await promptForSlug({
-         name: localize("PF2EATW.Compendium.NewBlankDefaultName"),
-         system: { slug: "" },
-      })
-      if (info === null) return
-      const entries = getTemplatesCompendium()
-      const slug = String(info.slug ?? "").toLowerCase()
-      if (slug) {
-         const collision = entries.findIndex((e) => e.slug === slug)
-         if (collision >= 0) {
-            const overwrite = await confirmHtml(
-               localize("PF2EATW.Compendium.SlugConflictTitle"),
-               `<p>${escapeHTML(localize("PF2EATW.Compendium.SlugConflict").replace("{slug}", slug))}</p>`,
-               false,
-            )
-            if (!overwrite) return
-            entries.splice(collision, 1)
-         }
-      }
-      const automation = defaultAutomation()
-      automation.label = info.name || ""
-      entries.push({
-         id: foundry.utils.randomID(),
-         slug,
-         name: info.name || localize("PF2EATW.Compendium.NewBlankDefaultName"),
-         automation,
-      })
-      await setTemplatesCompendium(entries)
-      this.render({ force: true })
-   }
-
-   static async _onImportOne(_event, _target) {
-      const json = await promptForImportJson()
-      if (!json) return
-      let parsed
-      try {
-         parsed = JSON.parse(json)
-      } catch (_e) {
-         ui.notifications?.error("Invalid JSON.")
-         return
-      }
-      if (!parsed || typeof parsed !== "object") return
-
-      let entry
-      if (parsed.automation && Array.isArray(parsed.automation.behaviors)) {
-         entry = {
-            id: parsed.id ?? foundry.utils.randomID(),
-            slug: String(parsed.slug ?? "").toLowerCase(),
-            name: String(parsed.name ?? "Imported"),
-            automation: parsed.automation,
-         }
-      } else if (Array.isArray(parsed.behaviors)) {
-         entry = {
-            id: foundry.utils.randomID(),
+      new TemplateEntryEditorApp({
+         entry: {
+            name: localize("PF2EATW.Compendium.NewBlankDefaultName"),
             slug: "",
-            name: "Imported",
-            automation: parsed,
-         }
-      } else {
-         ui.notifications?.error("Couldn't recognize the JSON as a template.")
-         return
-      }
-      const entries = getTemplatesCompendium()
-
-      if (entry.slug) {
-         const collision = entries.findIndex((e) => e.slug === entry.slug)
-         if (collision >= 0) {
-            const overwrite = await confirmHtml(
-               localize("PF2EATW.Compendium.SlugConflictTitle"),
-               `<p>${escapeHTML(localize("PF2EATW.Compendium.SlugConflict").replace("{slug}", entry.slug))}</p>`,
-               false,
-            )
-            if (!overwrite) return
-            entries.splice(collision, 1)
-         }
-      }
-      entries.push(entry)
-      await setTemplatesCompendium(entries)
-      this.render({ force: true })
+         },
+         onSave: (entry) =>
+            saveCompendiumEntryFromEditor(entry, {
+               originalId: null,
+               app: this,
+            }),
+      }).render({ force: true })
    }
+}
+
+function importedTemplateEntries(parsed) {
+   const rows = Array.isArray(parsed) ? parsed : [parsed]
+   return rows
+      .filter(
+         (entry) =>
+            entry &&
+            typeof entry === "object" &&
+            entry.automation &&
+            Array.isArray(entry.automation.behaviors),
+      )
+      .map((entry) =>
+         sanitizeTemplateEntry({
+            id: entry.id ?? foundry.utils.randomID(),
+            slug: normalizeEntrySlug(entry.slug),
+            name: String(entry.name ?? "Untitled"),
+            automation: entry.automation,
+         }),
+      )
+}
+
+function importedSlugCollisions(existingEntries, importedEntries) {
+   const existingSlugs = new Set(
+      existingEntries
+         .map((entry) => normalizeEntrySlug(entry?.slug))
+         .filter(Boolean),
+   )
+   return importedEntries.filter((entry) => {
+      const slug = normalizeEntrySlug(entry?.slug)
+      return slug && existingSlugs.has(slug)
+   })
+}
+
+function collisionPromptHtml(collisions) {
+   const shown = collisions.slice(0, 20)
+   const rows = shown
+      .map(
+         (entry) =>
+            `<li><code>${escapeHTML(entry.slug)}</code> ${escapeHTML(entry.name ?? "")}</li>`,
+      )
+      .join("")
+   const more =
+      collisions.length > shown.length
+         ? `<p>${collisions.length - shown.length} more matching template${collisions.length - shown.length === 1 ? "" : "s"} will use the same choice.</p>`
+         : ""
+   return `<p>The imported file contains ${collisions.length} template${collisions.length === 1 ? "" : "s"} with slug${collisions.length === 1 ? "" : "s"} already in this compendium.</p>
+      <p>Replace existing templates with the imported versions? Choosing No keeps the existing templates and skips the matching imported ones.</p>
+      <ul>${rows}</ul>
+      ${more}`
+}
+
+function mergeImportedTemplateEntries(existingEntries, importedEntries, replaceCollisions) {
+   const entries = foundry.utils.deepClone(existingEntries)
+   const bySlug = new Map()
+   const usedIds = new Set()
+   for (let index = 0; index < entries.length; index++) {
+      const id = entries[index]?.id
+      if (id) usedIds.add(String(id))
+      const slug = normalizeEntrySlug(entries[index]?.slug)
+      if (slug && !bySlug.has(slug)) bySlug.set(slug, index)
+   }
+
+   let added = 0
+   let replaced = 0
+   let skipped = 0
+   for (const imported of importedEntries) {
+      const clean = sanitizeTemplateEntry(imported)
+      const slug = normalizeEntrySlug(clean.slug)
+      const existingIndex = slug ? bySlug.get(slug) : undefined
+      if (existingIndex !== undefined) {
+         if (!replaceCollisions) {
+            skipped += 1
+            continue
+         }
+         clean.id = entries[existingIndex].id ?? clean.id
+         entries[existingIndex] = clean
+         usedIds.add(String(clean.id))
+         replaced += 1
+         continue
+      }
+      clean.id = uniqueTemplateEntryId(clean.id, usedIds)
+      usedIds.add(String(clean.id))
+      entries.push(clean)
+      if (slug) bySlug.set(slug, entries.length - 1)
+      added += 1
+   }
+   return { entries, added, replaced, skipped }
+}
+
+function uniqueTemplateEntryId(preferred, usedIds) {
+   let id = preferred ? String(preferred) : foundry.utils.randomID()
+   while (usedIds.has(id)) id = foundry.utils.randomID()
+   return id
+}
+
+async function saveCompendiumEntryFromEditor(
+   entry,
+   { originalId = null, app = null } = {},
+) {
+   const clean = sanitizeTemplateEntry(entry)
+   clean.slug = normalizeEntrySlug(clean.slug)
+   const entries = getTemplatesCompendium()
+   let index = originalId
+      ? entries.findIndex((existing) => existing.id === originalId)
+      : -1
+
+   if (clean.slug) {
+      const collision = entries.findIndex(
+         (existing) =>
+            existing.id !== originalId &&
+            normalizeEntrySlug(existing.slug) === clean.slug,
+      )
+      if (collision >= 0) {
+         const overwrite = await confirmHtml(
+            localize("PF2EATW.Compendium.SlugConflictTitle"),
+            `<p>${escapeHTML(localize("PF2EATW.Compendium.SlugConflict").replace("{slug}", clean.slug))}</p>`,
+            false,
+         )
+         if (!overwrite) return false
+         entries.splice(collision, 1)
+         if (index > collision) index -= 1
+      }
+   }
+
+   if (index >= 0) entries[index] = clean
+   else entries.push(clean)
+   await setTemplatesCompendium(entries)
+   app?.render({ force: true })
+   return true
 }
 
 export function registerTemplatesCompendiumHooks() {
@@ -480,7 +493,7 @@ export function registerTemplatesCompendiumHooks() {
       setTimeout(() => {
          reconcileTemplatesCompendiumAssignments({ reason: "ready" }).catch(
             (e) => {
-               console.warn(`[${MODULE_ID}] auto-assign reconcile failed`, e)
+               undefined
             },
          )
       }, 500)
@@ -492,7 +505,7 @@ async function onCreateItemForAutoAssign(item, options, userId) {
    try {
       await autoAssignTemplateToItem(item, { reason: "create-item" })
    } catch (e) {
-      console.warn(`[${MODULE_ID}] auto-assign failed`, e)
+      undefined
    }
 }
 
@@ -500,7 +513,7 @@ function onCreateActorForAutoAssign(actor) {
    if (!canAutoAssignTemplates()) return
    setTimeout(() => {
       reconcileActorItems(actor, { reason: "create-actor" }).catch((e) => {
-         console.warn(`[${MODULE_ID}] auto-assign actor reconcile failed`, e)
+         undefined
       })
    }, 500)
 }
@@ -526,6 +539,14 @@ function hasAutomationFlag(item) {
    return !!(existing && typeof existing === "object")
 }
 
+function isCompendiumItem(item) {
+   if (!item) return false
+   if (item.pack) return true
+   if (item.compendium) return true
+   const parentPack = item.parent?.pack ?? item.parent?.compendium
+   return !!parentPack
+}
+
 function templatesBySlug(entries = getTemplatesCompendium()) {
    const bySlug = new Map()
    for (const entry of Array.isArray(entries) ? entries : []) {
@@ -547,6 +568,7 @@ export async function autoAssignTemplateToItem(
 ) {
    if (!canAutoAssignTemplates()) return false
    if (!item || !SUPPORTED_ITEM_TYPES.has(item.type)) return false
+   if (isCompendiumItem(item)) return false
    if (hasAutomationFlag(item)) return false
 
    const slug = itemTemplateSlug(item)
@@ -555,11 +577,16 @@ export async function autoAssignTemplateToItem(
    const match = lookup.get(slug)
    if (!match) return false
 
-   await item.setFlag(
-      FLAG_SCOPE,
-      "automation",
-      foundry.utils.deepClone(match.automation),
-   )
+   try {
+      await item.setFlag(
+         FLAG_SCOPE,
+         "automation",
+         normalizeAutomation(match.automation, item),
+      )
+   } catch (e) {
+      if (String(e?.message ?? "").includes("locked compendium")) return false
+      throw e
+   }
    return true
 }
 

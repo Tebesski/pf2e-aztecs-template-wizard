@@ -1,7 +1,6 @@
 import { getDamageTypeVisual } from "../data.mjs"
 import { readAutomation, saveAutomation } from "./automation-storage.mjs"
 import {
-   damageRowHtml,
    refreshDamageList,
 } from "./renderers.mjs"
 
@@ -35,10 +34,10 @@ export function wireDamageControls($tab, item) {
             cur.damageType = el.value
          else if (el.classList.contains("atw-damage-category"))
             cur.category = el.value
-         else if (el.classList.contains("atw-damage-extra-toggle-input")) {
-            cur.extraRollOptionsEnabled = el.checked
-         } else if (el.classList.contains("atw-damage-extra"))
+         else if (el.classList.contains("atw-damage-extra")) {
             cur.extraRollOptions = el.value
+            cur.extraRollOptionsEnabled = true
+         }
          arr[idx] = cur
          foundry.utils.setProperty(entry.system, fieldKey, arr)
          await saveAutomation(item, a)
@@ -52,9 +51,6 @@ export function wireDamageControls($tab, item) {
             }
          }
 
-         if (el.classList.contains("atw-damage-extra-toggle-input")) {
-            row.outerHTML = damageRowHtml(cur, idx)
-         }
       },
    )
 
@@ -80,6 +76,8 @@ export function wireDamageControls($tab, item) {
             dieSize: "d6",
             damageType: "fire",
             category: "normal",
+            extraRollOptionsEnabled: true,
+            extraRollOptions: "",
          })
          foundry.utils.setProperty(entry.system, fieldKey, arr)
          await saveAutomation(item, a)

@@ -3,11 +3,12 @@ import { getDamageTypeOptions } from "./options.mjs"
 
 export function defaultAutomation() {
   return {
-    enabled: true,
+    enabled: false,
     label: "",
     attachable: false,
     contiguous: { enabled: false, count: 2 },
-    expiration: { enabled: true, amount: 1, unit: "minutes" },
+    placementRange: { enabled: false, max: 0 },
+    expiration: { enabled: true, amount: 1, unit: "minutes", sustained: false },
     advanced: defaultAdvanced(),
     templateShape: defaultTemplateShape(),
     behaviors: []
@@ -35,6 +36,7 @@ export const TEMPLATE_SHAPE_TYPE_OPTIONS = [
   { value: "emanation",  label: "PF2EATW.TemplateShape.Emanation" },
   { value: "line",       label: "PF2EATW.TemplateShape.Line" },
   { value: "ring",       label: "PF2EATW.TemplateShape.Ring" },
+  { value: "square",     label: "PF2EATW.TemplateShape.Square" },
   { value: "cone",       label: "PF2EATW.TemplateShape.Cone" },
 ];
 
@@ -92,6 +94,7 @@ export function placedRegionShapeKind(regionShapeType) {
   switch (regionShapeType) {
     case "cone":      return "cone";
     case "circle":    return "circle";
+    case "ring":      return "ring";
     case "rectangle": return "rectangle";
     case "ellipse":   return "ellipse";
     case "polygon":   return null;

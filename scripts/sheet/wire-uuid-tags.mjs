@@ -6,6 +6,7 @@ import {
    refreshUuidList,
    resolveUuidIntoRow,
 } from "./renderers.mjs"
+import { sanitizeRestrictTriggers } from "./restrict-trigger-controls.mjs"
 
 export function wireUuidAndTagControls($tab, item) {
    $tab.on("change", ".atw-uuid-input", async (ev) => {
@@ -254,6 +255,7 @@ export function wireUuidAndTagControls($tab, item) {
          : []
       if (!arr.includes(value)) arr.push(value)
       foundry.utils.setProperty(entry.system, fieldKey, arr)
+      sanitizeRestrictTriggers(entry)
       await saveAutomation(item, a)
       refreshTagPicker(picker, item)
    })
@@ -274,10 +276,11 @@ export function wireUuidAndTagControls($tab, item) {
          const a = readAutomation(item)
          const entry = a.behaviors.find((b) => b.id === id)
          if (!entry) return
-         const arr = Array.isArray(entry.system?.[fieldKey])
-            ? entry.system[fieldKey].filter((x) => x !== removeValue)
-            : []
-         foundry.utils.setProperty(entry.system, fieldKey, arr)
+        const arr = Array.isArray(entry.system?.[fieldKey])
+           ? entry.system[fieldKey].filter((x) => x !== removeValue)
+           : []
+        foundry.utils.setProperty(entry.system, fieldKey, arr)
+         sanitizeRestrictTriggers(entry)
          await saveAutomation(item, a)
          refreshTagPicker(picker, item)
       },

@@ -57,7 +57,7 @@ if (__useTH) {
       flavor: FLAVOR,
       consequences: CONSEQUENCES
     });
-  } catch (e) { console.warn("[atw] Target Helper choice queue failed", e); }
+  } catch (e) { undefined; }
   return;
 }
 const __placer = srcItem?.actor ?? null;
@@ -74,16 +74,29 @@ const SKILL_LABELS = {
   thievery: "Thievery", perception: "Perception", lore: "Lore"
 };
 const SAVE_LABELS = { fortitude: "Fortitude", reflex: "Reflex", will: "Will" };
+function __titleCaseWords(value) {
+  return String(value ?? "")
+    .replace(/[-_]+/g, " ")
+    .trim()
+    .replace(/\\b[a-z]/g, letter => letter.toUpperCase());
+}
+function __loreLabel(value) {
+  const base = String(value ?? "")
+    .replace(/[-_\\s]*lore$/i, "")
+    .replace(/[-_]+/g, " ")
+    .trim();
+  return \`\${__titleCaseWords(base || "Custom")} (Lore)\`;
+}
 const buttons = CHOICES.map((c, i) => {
   let label;
   const displayDc = resolveNumber(String(c.dc ?? "15"), __scope) || 15;
   if (c.kind === "skill") {
     const skName = c.skill === "lore" && c.lore
-      ? c.lore
+      ? __loreLabel(c.lore)
       : (SKILL_LABELS[c.skill] ?? c.skill ?? "?");
     label = \`\${skName} (DC \${displayDc})\`;
   } else {
-    label = \`\${SAVE_LABELS[c.save] ?? c.save ?? "?"} save (DC \${displayDc})\`;
+    label = \`\${SAVE_LABELS[c.save] ?? c.save ?? "?"} Save (DC \${displayDc})\`;
   }
   return { action: "atw-c-" + i, label, default: i === 0 };
 });
@@ -124,7 +137,7 @@ try {
     });
   }
 } catch (e) {
-  console.error("[atw] choiceSet dialog failed", e);
+  undefined;
   return;
 }
 if (chosenIdx < 0 || chosenIdx >= CHOICES.length) return;
@@ -151,7 +164,7 @@ try {
     });
   }
 } catch (e) {
-  console.error("[atw] choiceSet roll failed", e);
+  undefined;
   return;
 }
 if (!outcome) return;
@@ -188,7 +201,7 @@ if (__grantFamily.length > 0) {
       await __dispatchChoiceGrantFamily(__grantFamily, token, srcItem, region);
     }
   } catch (e) {
-    console.error("[atw] choice grant-family dispatch failed", e);
+    undefined;
   }
 }
 
@@ -213,7 +226,7 @@ for (const c of __other) {
     }
     await dispatchConsequence(c, token, srcItem, region, 0);
   } catch (e) {
-    console.error("[atw] choice consequence dispatch failed", c, e);
+    undefined;
   }
 }
 

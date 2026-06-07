@@ -33,10 +33,7 @@ export async function startContiguousPlacementChain(
             flagData,
          })
       } catch (e) {
-         console.warn(
-            `[${MODULE_ID}] failed to mark contiguous primary via socketlib`,
-            e,
-         )
+         undefined
          try {
             await region.setFlag(FLAG_SCOPE, "contiguousPlacement", flagData)
          } catch (_e) {}
@@ -53,7 +50,7 @@ export async function startContiguousPlacementChain(
          sessionId,
          { finalizeAsGM, applyAutomationToRegion },
       ).catch((e) => {
-         console.warn(`[${MODULE_ID}] contiguous placement failed`, e)
+         undefined
       })
    }, 50)
 }
@@ -103,10 +100,7 @@ async function runContiguousPlacementChain(
             placed = await canvas.regions.placeRegion(data)
          } catch (e) {
             if (!isPlacementCancellation(e)) {
-               console.warn(
-                  `[${MODULE_ID}] contiguous placement slot ${index} failed`,
-                  e,
-               )
+               undefined
             }
          }
          const placedRegion = regionDocumentFromPlacementResult(placed)
@@ -200,10 +194,7 @@ async function finalizeContiguousPlacement(
          })
          return
       } catch (e) {
-         console.warn(
-            `[${MODULE_ID}] failed to finalize contiguous placement via socketlib`,
-            e,
-         )
+         undefined
       }
    }
    const liveRegions = []
@@ -232,13 +223,15 @@ async function finalizeContiguousPlacement(
    )
    if (!shapes.length) return
 
-   await primary.update(
-      {
-         shapes,
-         [`flags.${FLAG_SCOPE}.-=contiguousPlacement`]: null,
-      },
-      { render: false },
-   )
+   const forcedDeletion = foundry.data?.operators?.ForcedDeletion
+   const updateData = forcedDeletion
+      ? {
+           shapes,
+           flags: { [FLAG_SCOPE]: { contiguousPlacement: forcedDeletion } },
+        }
+      : { shapes }
+   await primary.update(updateData, { render: false })
+   if (!forcedDeletion) await primary.unsetFlag(FLAG_SCOPE, "contiguousPlacement")
    clearRegionFootprintCache(primary)
 
    const extraIds = liveRegions

@@ -1,0 +1,25 @@
+<form class="atw-template-entry-editor">
+   <section class="atw-template-entry-meta atw-section">
+      <label class="atw-row">
+         <span class="atw-row-label">{{nameLabel}}</span>
+         <input type="text" class="atw-template-entry-name" value="{{name}}">
+      </label>
+      <label class="atw-row">
+         <span class="atw-row-label">{{slugLabel}}</span>
+         <input type="text" class="atw-template-entry-slug" value="{{slug}}">
+      </label>
+   </section>
+   <div class="tab atw-tab active" data-tab="atw-templates-compendium-entry">
+      {{{editorHtml}}}
+   </div>
+   <footer class="atw-template-entry-footer">
+      <button type="button" data-action="atw-save-entry">
+         <i class="fa-solid fa-floppy-disk"></i>
+         <span>{{saveLabel}}</span>
+      </button>
+      <button type="button" data-action="atw-close-entry">
+         <i class="fa-solid fa-xmark"></i>
+         <span>{{cancelLabel}}</span>
+      </button>
+   </footer>
+</form>

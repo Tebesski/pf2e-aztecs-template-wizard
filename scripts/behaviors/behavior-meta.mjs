@@ -85,7 +85,8 @@ const __ATW_MUST_NOT_HAVE_ROLL_OPTIONS = ${not};
 const __ATW_IGNORED_BY = ${ignoredBy};
 const __atwFilterToken = event?.data?.token;
 const __atwFilterActor = __atwFilterToken?.actor;
-if (__atwFilterActor) {
+const __atwLifecycleExitEvent = ["atwAdjacentExit", "atwWithinExit", "tokenExit", "TOKEN_EXIT", "tokenMoveOut", "TOKEN_MOVE_OUT"].includes(String(event?.name ?? ""));
+if (__atwFilterActor && !__atwLifecycleExitEvent) {
   const __atwActorOptions = new Set(__atwFilterActor.getRollOptions?.() ?? []);
   for (const ro of __ATW_MUST_HAVE_ROLL_OPTIONS) {
     if (!__atwActorOptions.has(ro)) return;

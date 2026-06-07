@@ -260,6 +260,36 @@ export function wireConsequenceControls($tab, item) {
    )
 
    $tab.on(
+      "change input",
+      ".atw-consequence-row .atw-consequence-heal-amount, .atw-save-consequence-row .atw-consequence-heal-amount, .atw-consequence-row .atw-consequence-heal-type, .atw-save-consequence-row .atw-consequence-heal-type",
+      async (ev) => {
+         const el = ev.currentTarget
+         await updateInnerConsequence(el, (c) => {
+            c.amount =
+               el.closest(".atw-consequence-heal")?.querySelector(".atw-consequence-heal-amount")?.value ?? "5"
+            c.healingType =
+               el.closest(".atw-consequence-heal")?.querySelector(".atw-consequence-heal-type")?.value ?? "untyped"
+         })
+      },
+   )
+
+   $tab.on(
+      "change input",
+      ".atw-consequence-row .atw-consequence-move-direction, .atw-save-consequence-row .atw-consequence-move-direction, .atw-consequence-row .atw-consequence-move-distance, .atw-save-consequence-row .atw-consequence-move-distance",
+      async (ev) => {
+         const el = ev.currentTarget
+         const wrap = el.closest(".atw-consequence-move")
+         await updateInnerConsequence(el, (c) => {
+            c.direction = wrap?.querySelector(".atw-consequence-move-direction")?.value ?? "away"
+            c.distance = Math.max(
+               0,
+               Number(wrap?.querySelector(".atw-consequence-move-distance")?.value) || 0,
+            )
+         })
+      },
+   )
+
+   $tab.on(
       "click",
       ".atw-consequence-damages [data-action='add-damage']",
       async (ev) => {

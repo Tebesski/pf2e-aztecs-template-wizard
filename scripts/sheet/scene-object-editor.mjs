@@ -127,16 +127,17 @@ export function openSceneObjectEditor(
          return
       }
       const rowIndex = Number.isInteger(options.index) ? options.index : null
-      const existing =
-         rowIndex !== null
-            ? foundry.utils.deepClone(
-                 normalizeTileAttachments(entry.system?.[fieldKey])[rowIndex]
-                    ?.tile ?? {},
-              )
-            : entry.system?.[fieldKey] &&
-                typeof entry.system[fieldKey] === "object"
-              ? foundry.utils.deepClone(entry.system[fieldKey])
-              : {}
+      const heightenAction = getHeightenAction(entry, options)
+      const existing = heightenAction
+         ? existingHeightenObject(kind, heightenAction)
+         : rowIndex !== null
+           ? foundry.utils.deepClone(
+                normalizeTileAttachments(entry.system?.[fieldKey])[rowIndex]
+                   ?.tile ?? {},
+             )
+           : entry.system?.[fieldKey] && typeof entry.system[fieldKey] === "object"
+             ? foundry.utils.deepClone(entry.system[fieldKey])
+             : {}
 
       const scratchData = cfg.makeScratch(existing)
 
@@ -156,10 +157,7 @@ export function openSceneObjectEditor(
             scratchData,
          ])
       } catch (e) {
-         console.error(
-            `[${MODULE_ID}] Failed to create scratch ${cfg.embeddedName}`,
-            e,
-         )
+         undefined
          resolve()
          return
       }
@@ -191,7 +189,10 @@ export function openSceneObjectEditor(
             const a2 = readAutomation(item)
             const entry2 = a2.behaviors.find((b) => b.id === behaviorId)
             if (entry2) {
-               if (rowIndex !== null) {
+               const heightenAction2 = getHeightenAction(entry2, options)
+               if (heightenAction2) {
+                  persistHeightenObject(kind, heightenAction2, saved)
+               } else if (rowIndex !== null) {
                   const rows = normalizeTileAttachments(
                      entry2.system?.[fieldKey],
                   )
@@ -212,10 +213,7 @@ export function openSceneObjectEditor(
                )
             }
          } catch (e) {
-            console.error(
-               `[${MODULE_ID}] Failed to persist ${cfg.embeddedName} config`,
-               e,
-            )
+            undefined
          }
 
          try {
@@ -241,10 +239,7 @@ export function openSceneObjectEditor(
       try {
          scratch.sheet?.render(true)
       } catch (e) {
-         console.error(
-            `[${MODULE_ID}] Failed to render ${cfg.embeddedName} sheet`,
-            e,
-         )
+         undefined
          finish()
       }
    })
@@ -252,4 +247,48 @@ export function openSceneObjectEditor(
 
 export function openTileEditor(item, behaviorId, fieldKey, options = {}) {
    return openSceneObjectEditor("tile", item, behaviorId, fieldKey, options)
+}
+
+function getHeightenAction(entry, options) {
+   if (!Number.isInteger(options.heightenIndex)) return null
+   if (!Number.isInteger(options.heightenActionIndex)) return null
+   const rule = Array.isArray(entry.heighten)
+      ? entry.heighten[options.heightenIndex]
+      : null
+   const action = Array.isArray(rule?.actions)
+      ? rule.actions[options.heightenActionIndex]
+      : null
+   return action && typeof action === "object" ? action : null
+}
+
+function existingHeightenObject(kind, action) {
+   if (kind === "tile") {
+      const row =
+         action.tileAttachment && typeof action.tileAttachment === "object"
+            ? action.tileAttachment
+            : {}
+      return foundry.utils.deepClone(row.tile ?? {})
+   }
+   if (kind === "sound") {
+      return foundry.utils.deepClone(action.sound ?? {})
+   }
+   if (kind === "light") {
+      return foundry.utils.deepClone(action.light ?? {})
+   }
+   return {}
+}
+
+function persistHeightenObject(kind, action, saved) {
+   if (kind === "tile") {
+      const row =
+         action.tileAttachment && typeof action.tileAttachment === "object"
+            ? foundry.utils.deepClone(action.tileAttachment)
+            : defaultTileAttachment()
+      row.tile = saved
+      action.tileAttachment = row
+   } else if (kind === "sound") {
+      action.sound = saved
+   } else if (kind === "light") {
+      action.light = saved
+   }
 }

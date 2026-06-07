@@ -37,6 +37,30 @@ export function registerModuleSettings(TemplatesCompendiumApp) {
       type: Boolean,
       default: true,
    })
+   game.settings.register(MODULE_ID, "restrictTemplatePlacementRange", {
+      name: "Restrict template placement if out of range",
+      hint: "When a Template Wizard maximum placement range is set, prevent placing the template beyond that range.",
+      scope: "world",
+      config: true,
+      type: Boolean,
+      default: true,
+   })
+   game.settings.register(MODULE_ID, "drawTemplatePlacementRangeLine", {
+      name: "Draw template placement range guide",
+      hint: "Draw a dashed line and current/max range label while placing ranged Template Wizard templates.",
+      scope: "client",
+      config: true,
+      type: Boolean,
+      default: true,
+   })
+   game.settings.register(MODULE_ID, "templatePlacementRangeLineColor", {
+      name: "Template placement range guide colour",
+      scope: "client",
+      config: true,
+      type: String,
+      default: "#ffcc33",
+   })
+   installPlacementRangeColorPicker()
    registerTemplatePlacementResizeKeybindings()
    installTemplatePlacementResize()
    game.settings.register(MODULE_ID, "templatesCompendium", {
@@ -53,6 +77,26 @@ export function registerModuleSettings(TemplatesCompendiumApp) {
       type: TemplatesCompendiumApp,
       restricted: true,
    })
+}
+
+function installPlacementRangeColorPicker() {
+   const guard = "__atwPlacementRangeColorPickerHook"
+   if (globalThis[guard]) return
+   globalThis[guard] = true
+   Hooks.on("renderSettingsConfig", (_app, element) => {
+      const root = element?.querySelector ? element : element?.[0]
+      const input = root?.querySelector?.(
+         `input[name="${MODULE_ID}.templatePlacementRangeLineColor"]`,
+      )
+      if (!input) return
+      input.type = "color"
+      input.value = normalizeColorSetting(input.value)
+   })
+}
+
+function normalizeColorSetting(value) {
+   const text = String(value ?? "").trim()
+   return /^#[0-9a-f]{6}$/i.test(text) ? text : "#ffcc33"
 }
 
 export async function cleanOrphanScratchDocuments() {
@@ -88,10 +132,7 @@ export async function cleanOrphanScratchDocuments() {
       try {
          await scene.deleteEmbeddedDocuments(name, ids)
       } catch (error) {
-         console.warn(
-            `[${MODULE_ID}] Failed to clean orphan scratch ${name}`,
-            error,
-         )
+         undefined
       }
    }
 }

@@ -30,7 +30,9 @@ async function _onRender(sheet, html) {
    const item = sheet.item ?? sheet.document
    if (!item) return
    if (!SUPPORTED_ITEM_TYPES.has(item.type)) return
-   await autoAssignTemplateToItem(item, { reason: "item-sheet-render" })
+   try {
+      await autoAssignTemplateToItem(item, { reason: "item-sheet-render" })
+   } catch (_e) {}
 
    const $html = _asJQuery(html)
    if (!$html) return
@@ -58,9 +60,7 @@ async function _onRender(sheet, html) {
 
    const body = $html.find(".sheet-body, .tab-body").first()
    if (!body.length) {
-      console.warn(
-         `[${MODULE_ID}] could not find sheet body, skipping injection`,
-      )
+      undefined
       return
    }
    body.append(

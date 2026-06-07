@@ -1,6 +1,5 @@
 import {
    BEHAVIOR_CATALOG,
-   FLAG_SCOPE,
    defaultBehaviorEntry,
 } from "../data.mjs"
 import { localize } from "../common/html.mjs"
@@ -14,7 +13,11 @@ import {
    promptForSlug,
    saveAutomationToCompendium,
 } from "../compendium/templates-compendium.mjs"
-import { readAutomation, saveAutomation } from "./automation-storage.mjs"
+import {
+   normalizeAutomation,
+   readAutomation,
+   saveAutomation,
+} from "./automation-storage.mjs"
 
 export function wireAutomationImportExportControls(
    $tab,
@@ -40,8 +43,8 @@ export function wireAutomationImportExportControls(
             ui.notifications?.info("Automation JSON copied to clipboard.")
          }
       } catch (e) {
-         console.error(e)
-         ui.notifications?.error("Export failed; see console.")
+         undefined
+         ui.notifications?.error("Export failed.")
       }
    })
 
@@ -57,23 +60,20 @@ export function wireAutomationImportExportControls(
             ui.notifications?.error("Invalid JSON.")
             return
          }
-         if (
-            !parsed ||
-            typeof parsed !== "object" ||
-            !Array.isArray(parsed.behaviors)
-         ) {
+         const incoming = parsed?.automation ?? parsed
+         if (!isTemplateAutomation(incoming)) {
             ui.notifications?.error(
                "That doesn't look like a Template Wizard automation.",
             )
             return
          }
 
-         await item.setFlag(FLAG_SCOPE, "automation", parsed)
+         await saveAutomation(item, incoming)
          ui.notifications?.info("Automation imported.")
          refreshPanel($html, item, sheet)
       } catch (e) {
-         console.error(e)
-         ui.notifications?.error("Import failed; see console.")
+         undefined
+         ui.notifications?.error("Import failed.")
       }
    })
 
@@ -91,8 +91,8 @@ export function wireAutomationImportExportControls(
                : "Saved to Templates Compendium.",
          )
       } catch (e) {
-         console.error(e)
-         ui.notifications?.error("Save failed; see console.")
+         undefined
+         ui.notifications?.error("Save failed.")
       }
    })
 
@@ -104,7 +104,10 @@ export function wireAutomationImportExportControls(
          try {
             const result = await promptForCompendiumImport()
             if (!result) return
-            const imported = cloneAutomation(result.entry.automation)
+            const imported = normalizeAutomation(
+               cloneAutomation(result.entry.automation),
+               item,
+            )
             if (!isTemplateAutomation(imported)) {
                ui.notifications?.error(
                   "That compendium entry does not contain Template Wizard automation.",
@@ -116,7 +119,7 @@ export function wireAutomationImportExportControls(
                   readAutomation(item),
                   imported,
                )
-               await item.setFlag(FLAG_SCOPE, "automation", merged)
+               await saveAutomation(item, merged)
                ui.notifications?.info(
                   localize("PF2EATW.Compendium.ImportedAppend").replace(
                      "{name}",
@@ -124,7 +127,7 @@ export function wireAutomationImportExportControls(
                   ),
                )
             } else {
-               await item.setFlag(FLAG_SCOPE, "automation", imported)
+               await saveAutomation(item, imported)
                ui.notifications?.info(
                   localize("PF2EATW.Compendium.ImportedReplace").replace(
                      "{name}",
@@ -134,8 +137,8 @@ export function wireAutomationImportExportControls(
             }
             refreshPanel($html, item, sheet)
          } catch (e) {
-            console.error(e)
-            ui.notifications?.error("Compendium import failed; see console.")
+            undefined
+            ui.notifications?.error("Compendium import failed.")
          }
       },
    )
@@ -169,14 +172,17 @@ export function wireBehaviorListControls($tab, $html, item, sheet, refreshPanel)
       refreshPanel($html, item, sheet)
    })
 
-   $tab.on("click", "[data-action='toggle-collapse']", async (ev) => {
+   $tab.on("click", ".atw-behavior-header", async (ev) => {
+      if (ev.target.closest("input, select, textarea, button")) return
+      if (ev.target.closest("[data-action='remove-behavior']")) return
       const li = ev.currentTarget.closest(".atw-behavior")
       if (!li) return
+      ev.preventDefault()
       const id = li.dataset.id
       const willCollapse = !li.classList.contains("atw-collapsed")
       li.classList.toggle("atw-collapsed", willCollapse)
 
-      const icon = ev.currentTarget.querySelector("i")
+      const icon = li.querySelector("[data-action='toggle-collapse'] i")
       if (icon) {
          icon.classList.toggle("fa-chevron-up", !willCollapse)
          icon.classList.toggle("fa-chevron-down", willCollapse)

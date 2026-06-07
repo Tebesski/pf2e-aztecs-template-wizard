@@ -5,8 +5,8 @@ import {
    shapeVariantsFromSpell,
    normalizeTileAttachments,
 } from "../data.mjs"
-export function readAutomation(item) {
-   const raw = item.getFlag(FLAG_SCOPE, "automation")
+import { normalizeHeightenRules } from "../heightening.mjs"
+export function normalizeAutomation(raw, item = null) {
    if (!raw) {
       const fresh = defaultAutomation()
       fresh.templateShape = { shapes: shapeVariantsFromSpell(item) }
@@ -29,6 +29,25 @@ export function readAutomation(item) {
          Number(merged.contiguous.count) || 2,
       )
    }
+   if (!merged.placementRange || typeof merged.placementRange !== "object") {
+      merged.placementRange = { enabled: false, max: 0 }
+   } else {
+      merged.placementRange.enabled = !!merged.placementRange.enabled
+      merged.placementRange.max = Math.max(
+         0,
+         Number(merged.placementRange.max) || 0,
+      )
+   }
+   if (!merged.expiration || typeof merged.expiration !== "object") {
+      merged.expiration = {
+         enabled: true,
+         amount: 1,
+         unit: "minutes",
+         sustained: false,
+      }
+   }
+   merged.expiration.sustained = !!merged.expiration.sustained
+   merged.expiration.heighten = normalizeHeightenRules(merged.expiration)
 
    if (!raw.templateShape) {
       merged.templateShape = { shapes: shapeVariantsFromSpell(item) }
@@ -52,20 +71,20 @@ export function readAutomation(item) {
 
    for (const entry of merged.behaviors) {
       if (!entry || !entry.system) continue
+      entry.heighten = normalizeHeightenRules(entry)
 
       if (
          entry.system.extraRollOptions !== undefined &&
          typeof entry.system.extraRollOptions !== "object"
       ) {
-         const enabled = !!entry.system.extraRollOptionsEnabled
          const value = String(entry.system.extraRollOptions ?? "")
-         entry.system.extraRollOptions = { enabled, value }
+         entry.system.extraRollOptions = { enabled: true, value }
       } else if (
          entry.system.extraRollOptions === undefined &&
          entry.system.extraRollOptionsEnabled !== undefined
       ) {
          entry.system.extraRollOptions = {
-            enabled: !!entry.system.extraRollOptionsEnabled,
+            enabled: true,
             value: "",
          }
       }
@@ -120,9 +139,14 @@ export function readAutomation(item) {
    return merged
 }
 
+export function readAutomation(item) {
+   return normalizeAutomation(item.getFlag(FLAG_SCOPE, "automation"), item)
+}
+
 export async function saveAutomation(item, automation) {
+   const normalized = normalizeAutomation(automation, item)
    await item.update(
-      { [`flags.${FLAG_SCOPE}.automation`]: automation },
+      { [`flags.${FLAG_SCOPE}.automation`]: normalized },
       { render: false },
    )
 }

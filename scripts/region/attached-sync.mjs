@@ -1,6 +1,7 @@
 import { FLAG_SCOPE, MODULE_ID } from "../data.mjs"
 import { requestPlayerChoiceDialog } from "../runtime/index.mjs"
 import { readAutomation } from "../sheet/automation-storage.mjs"
+import { sourceItemForRegion } from "../compendium/template-entry-item.mjs"
 import { escapeHTML, renderModuleTemplate } from "../common/html.mjs"
 import {
    clearRegionFootprintCache,
@@ -21,6 +22,14 @@ import {
    spawnDestroyableWallActors,
    syncDestroyableWallActorsForEntry,
 } from "./destroyable-walls.mjs"
+
+async function automationForRegion(region) {
+   const managed = region.getFlag(FLAG_SCOPE, "managed")
+   if (managed?.resolvedAutomation) return managed.resolvedAutomation
+   const item = await sourceItemForRegion(region, tryFromUuid)
+   return item ? readAutomation(item) : null
+}
+
 function wallsFromBoundary(footprint, region, entry) {
    const settings = entry.system ?? {}
    const restriction = {
@@ -156,11 +165,8 @@ export async function createAttachedWalls(region, wallEntries) {
          let itemName = "Wall"
          let sourceItem = null
          try {
-            const managed = region.getFlag(FLAG_SCOPE, "managed")
-            if (managed?.itemUuid) {
-               sourceItem = await tryFromUuid(managed.itemUuid)
-               if (sourceItem?.name) itemName = sourceItem.name
-            }
+            sourceItem = await sourceItemForRegion(region, tryFromUuid)
+            if (sourceItem?.name) itemName = sourceItem.name
          } catch (_e) {}
          const side = await promptSingleWallSide(itemName, {
             userId: activeDialogUserIdForRegion(region, sourceItem),
@@ -187,7 +193,7 @@ export async function createAttachedWalls(region, wallEntries) {
    try {
       createdWalls = await scene.createEmbeddedDocuments("Wall", flatCreates)
    } catch (e) {
-      console.error(`[${MODULE_ID}] Failed to create attached walls`, e)
+      undefined
       return
    }
 
@@ -221,9 +227,7 @@ export async function syncAttachedWalls(region) {
    )
    if (!existing.length) return
 
-   const managed = region.getFlag(FLAG_SCOPE, "managed")
-   const item = managed?.itemUuid ? await tryFromUuid(managed.itemUuid) : null
-   const automation = item ? readAutomation(item) : null
+   const automation = await automationForRegion(region)
    const wallEntries = (automation?.behaviors ?? []).filter(
       (b) => b?.enabled && b.type === "attachWalls",
    )
@@ -234,10 +238,7 @@ export async function syncAttachedWalls(region) {
          existing.map((w) => w.id),
       )
    } catch (e) {
-      console.warn(
-         `[${MODULE_ID}] Failed to delete existing attached walls for resync`,
-         e,
-      )
+      undefined
    }
    if (wallEntries.length) {
       await createAttachedWalls(region, wallEntries)
@@ -254,9 +255,7 @@ export async function syncAttachedWallsInPlace(region) {
    const footprint = getRegionFootprint(region)
    if (footprint.boundaryEdges.length === 0) return
 
-   const managed = region.getFlag(FLAG_SCOPE, "managed")
-   const item = managed?.itemUuid ? await tryFromUuid(managed.itemUuid) : null
-   const automation = item ? readAutomation(item) : null
+   const automation = await automationForRegion(region)
    const wallEntries = (automation?.behaviors ?? []).filter(
       (b) => b?.enabled && b.type === "attachWalls",
    )
@@ -276,9 +275,7 @@ export async function syncAttachedWallsInPlace(region) {
          : null
       if (entry.system?.singleWall) {
          if (!side) {
-            console.warn(
-               `[${MODULE_ID}] Cannot resync single-wall attachment without stored side; leaving existing walls in place.`,
-            )
+            undefined
             continue
          }
          desired = filterWallsToSide(desired, footprint.bounds, side, region)
@@ -315,7 +312,7 @@ export async function syncAttachedWallsInPlace(region) {
          try {
             await scene.updateEmbeddedDocuments("Wall", liveUpdates)
          } catch (e) {
-            console.warn(`[${MODULE_ID}] Failed to update attached walls`, e)
+            undefined
          }
       }
 
@@ -326,17 +323,14 @@ export async function syncAttachedWallsInPlace(region) {
          try {
             await scene.deleteEmbeddedDocuments("Wall", deletes)
          } catch (e) {
-            console.warn(
-               `[${MODULE_ID}] Failed to remove extra attached walls`,
-               e,
-            )
+            undefined
          }
       } else if (sortedDesired.length > sortedOwned.length) {
          const creates = sortedDesired.slice(sortedOwned.length)
          try {
             await scene.createEmbeddedDocuments("Wall", creates)
          } catch (e) {
-            console.warn(`[${MODULE_ID}] Failed to add new attached walls`, e)
+            undefined
          }
       }
 
@@ -366,9 +360,7 @@ export async function syncAttachedTiles(region) {
    const bounds = footprint.bounds ?? computeRegionBounds(region)
    if (!bounds) return
 
-   const managed = region.getFlag(FLAG_SCOPE, "managed")
-   const item = managed?.itemUuid ? await tryFromUuid(managed.itemUuid) : null
-   const automation = item ? readAutomation(item) : null
+   const automation = await automationForRegion(region)
 
    const updates = []
    const deletes = []
@@ -408,17 +400,14 @@ export async function syncAttachedTiles(region) {
       try {
          await scene.deleteEmbeddedDocuments("Tile", deletes, { render: false })
       } catch (e) {
-         console.error(
-            `[${MODULE_ID}] Failed to delete stale attached tiles`,
-            e,
-         )
+         undefined
       }
    }
    if (updates.length) {
       try {
          await scene.updateEmbeddedDocuments("Tile", updates, { render: false })
       } catch (e) {
-         console.error(`[${MODULE_ID}] Failed to sync attached tiles`, e)
+         undefined
       }
    }
 }
@@ -433,9 +422,7 @@ export async function syncAttachedSounds(region) {
    const placement = soundPlacement(region)
    if (!placement) return
 
-   const managed = region.getFlag(FLAG_SCOPE, "managed")
-   const item = managed?.itemUuid ? await tryFromUuid(managed.itemUuid) : null
-   const automation = item ? readAutomation(item) : null
+   const automation = await automationForRegion(region)
 
    const updates = sounds.map((sound) => {
       const attachId = sound.flags?.[FLAG_SCOPE]?.attachmentId
@@ -457,7 +444,7 @@ export async function syncAttachedSounds(region) {
             render: false,
          })
       } catch (e) {
-         console.error(`[${MODULE_ID}] Failed to sync attached sounds`, e)
+         undefined
       }
    }
 }
@@ -470,9 +457,7 @@ export async function syncAttachedLights(region) {
    )
    if (!existing.length) return
 
-   const managed = region.getFlag(FLAG_SCOPE, "managed")
-   const item = managed?.itemUuid ? await tryFromUuid(managed.itemUuid) : null
-   const automation = item ? readAutomation(item) : null
+   const automation = await automationForRegion(region)
    const lightEntries = (automation?.behaviors ?? []).filter(
       (b) => b?.enabled && b.type === "attachLight",
    )
@@ -483,10 +468,7 @@ export async function syncAttachedLights(region) {
          existing.map((l) => l.id),
       )
    } catch (e) {
-      console.warn(
-         `[${MODULE_ID}] Failed to delete existing attached lights for resync`,
-         e,
-      )
+      undefined
    }
    if (lightEntries.length) {
       await createAttachedLights(region, lightEntries)
@@ -560,8 +542,7 @@ export async function promptAttachRegionToToken(region) {
 
    let sourceItem = null
    try {
-      const managed = region.getFlag(FLAG_SCOPE, "managed")
-      if (managed?.itemUuid) sourceItem = await tryFromUuid(managed.itemUuid)
+      sourceItem = await sourceItemForRegion(region, tryFromUuid)
    } catch (_e) {}
    const dialogUserId = activeDialogUserIdForRegion(region, sourceItem)
    const tokenId =
@@ -610,6 +591,6 @@ export async function promptAttachRegionToToken(region) {
    try {
       await region.update({ attachment: { token: tokenId } }, { render: false })
    } catch (e) {
-      console.warn(`[${MODULE_ID}] region.update attachment.token failed`, e)
+      undefined
    }
 }

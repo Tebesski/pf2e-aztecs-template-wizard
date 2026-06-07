@@ -1,24 +1,41 @@
 import { FLAG_SCOPE } from "../data.mjs"
+import { itemFromRegionEntry } from "../compendium/template-entry-item.mjs"
 
 export function getAutomationForRegion(region, providedAutomation = null) {
    if (providedAutomation) return providedAutomation
    const managed = region.getFlag(FLAG_SCOPE, "managed")
-   if (!managed?.itemUuid) return null
+   if (managed?.resolvedAutomation) return managed.resolvedAutomation
+   if (!managed?.itemUuid) {
+      return (
+         itemFromRegionEntry(region, { editable: false })?.getFlag?.(
+            FLAG_SCOPE,
+            "automation",
+         ) ?? null
+      )
+   }
    let item = null
    try {
       const fn = globalThis.fromUuidSync
       if (typeof fn === "function") item = fn(managed.itemUuid)
    } catch (_e) {}
-   return item?.getFlag?.(FLAG_SCOPE, "automation") ?? null
+   return (
+      item?.getFlag?.(FLAG_SCOPE, "automation") ??
+      itemFromRegionEntry(region, { editable: false })?.getFlag?.(
+         FLAG_SCOPE,
+         "automation",
+      ) ??
+      null
+   )
 }
 
 export function templateVariantMatchesPlaced(v, placedType) {
    if (!v?.type || !placedType) return false
    if (placedType === "cone") return v.type === "cone"
    if (placedType === "circle")
-      return v.type === "circle" || v.type === "emanation" || v.type === "ring"
+      return v.type === "circle" || v.type === "emanation"
+   if (placedType === "square") return v.type === "square"
    if (placedType === "rectangle")
-      return v.type === "rectangle" || v.type === "line"
+      return v.type === "square" || v.type === "rectangle" || v.type === "line"
    if (placedType === "ellipse") return v.type === "ellipse"
    if (placedType === "ring") return v.type === "ring"
    return v.type === placedType
@@ -26,9 +43,17 @@ export function templateVariantMatchesPlaced(v, placedType) {
 
 export function shapeTypeFromRegion(region) {
    const placedType = region.shapes?.[0]?.type ?? null
+   const areaShape = region.getFlag?.("pf2e", "areaShape")
    if (placedType === "cone") return "cone"
-   if (placedType === "circle") return "circle"
-   if (placedType === "rectangle") return "rectangle"
+   if (placedType === "circle") {
+      if (areaShape === "emanation") return "emanation"
+      return "circle"
+   }
+   if (placedType === "rectangle") {
+      if (areaShape === "square") return "square"
+      if (areaShape === "line") return "line"
+      return "rectangle"
+   }
    if (placedType === "ellipse") return "ellipse"
    if (placedType === "ring") return "ring"
    return null
@@ -40,12 +65,7 @@ export function getWizardShapeVariant(region, providedAutomation = null) {
    const variants = Array.isArray(ts?.shapes) ? ts.shapes : []
    if (variants.length === 0) return null
 
-   const placedType = region.shapes?.[0]?.type ?? null
-
-   if (placedType === "circle") {
-      const ring = variants.find((v) => v?.type === "ring")
-      if (ring) return ring
-   }
+   const placedType = shapeTypeFromRegion(region)
 
    return (
       variants.find((v) => templateVariantMatchesPlaced(v, placedType)) ??
@@ -103,6 +123,21 @@ export function getWizardShapeOverride(region, providedAutomation = null) {
             y: anchorY - widthPx / 2,
             width: sizePx,
             height: widthPx,
+            rotation,
+            hole: false,
+         }
+      }
+      case "square": {
+         const width = Number(firstShape?.width ?? 0)
+         const height = Number(firstShape?.height ?? 0)
+         const centerX = width > 0 ? anchorX + width / 2 : anchorX
+         const centerY = height > 0 ? anchorY + height / 2 : anchorY
+         return {
+            type: "rectangle",
+            x: centerX - sizePx / 2,
+            y: centerY - sizePx / 2,
+            width: sizePx,
+            height: sizePx,
             rotation,
             hole: false,
          }

@@ -9,6 +9,7 @@ import {
 
 export { isTargetHelperEnabled } from "./card-queue-state.mjs"
 export { queueDamageCard } from "./damage-card-queue.mjs"
+export { queueHealCard } from "./heal-card-queue.mjs"
 export { queueSkillCheckCard } from "./skill-card-queue.mjs"
 
 const TARGET_HELPER_QUEUE = new Map()
@@ -146,7 +147,7 @@ async function flushRollDiceBucket(key) {
          },
       })
    } catch (e) {
-      console.error(`[${MODULE_ID}] roll-dice card creation failed`, e)
+      undefined
    }
 }
 
@@ -250,10 +251,7 @@ async function flushTargetHelperBucket(key) {
                instances,
             }
          } catch (e) {
-            console.warn(
-               `[${MODULE_ID}] failed to pre-evaluate damage formula`,
-               e,
-            )
+            undefined
          }
       }
 
@@ -405,11 +403,26 @@ ${damageRollData.instances
       }
       await ChatMessage.create(chatData)
    } catch (e) {
-      console.error(`[${MODULE_ID}] multi-target card creation failed`, e)
+      undefined
    }
 }
 
 const TH_CHOICE_QUEUE = new Map()
+
+function titleCaseWords(value) {
+   return String(value ?? "")
+      .replace(/[-_]+/g, " ")
+      .trim()
+      .replace(/\b[a-z]/g, (letter) => letter.toUpperCase())
+}
+
+function loreLabel(value) {
+   const base = String(value ?? "")
+      .replace(/[-_\s]*lore$/i, "")
+      .replace(/[-_]+/g, " ")
+      .trim()
+   return `${titleCaseWords(base || "Custom")} (Lore)`
+}
 
 export function queueTargetHelperChoice({
    behaviorId,
@@ -424,7 +437,8 @@ export function queueTargetHelperChoice({
    if (!tokenDoc) return false
    if (game.user.id !== game.users.activeGM?.id) return true
 
-   const key = `${regionUuid ?? "noregion"}|${behaviorId ?? "nobehavior"}`
+   const tokenKey = tokenDoc.uuid ?? tokenDoc.id ?? foundry.utils.randomID()
+   const key = `${regionUuid ?? "noregion"}|${behaviorId ?? "nobehavior"}|${tokenKey}`
    let bucket = TH_CHOICE_QUEUE.get(key)
    if (!bucket) {
       bucket = {
@@ -529,11 +543,11 @@ async function flushTargetHelperChoiceBucket(key) {
          if (c.kind === "skill") {
             const skName =
                c.skill === "lore" && c.lore
-                  ? c.lore
+                  ? loreLabel(c.lore)
                   : (SKILL_LABELS[c.skill] ?? c.skill ?? "?")
             label = `${skName} (DC ${displayDc})`
          } else {
-            label = `${SAVE_LABELS[c.save] ?? c.save ?? "?"} save (DC ${displayDc})`
+            label = `${SAVE_LABELS[c.save] ?? c.save ?? "?"} Save (DC ${displayDc})`
          }
          return { action: `atw-c-${i}`, label, default: i === 0, idx: i }
       })
@@ -657,6 +671,6 @@ async function flushTargetHelperChoiceBucket(key) {
          })
       }
    } catch (e) {
-      console.error(`[${MODULE_ID}] Target Helper choice flush failed`, e)
+      undefined
    }
 }

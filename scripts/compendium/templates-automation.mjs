@@ -1,4 +1,5 @@
 import { defaultAutomation } from "../data.mjs"
+import { normalizeAutomation } from "../sheet/automation-storage.mjs"
 
 export function isTemplateAutomation(value) {
    return !!(
@@ -9,7 +10,7 @@ export function isTemplateAutomation(value) {
 }
 
 export function cloneAutomation(value) {
-   return foundry.utils.deepClone(value)
+   return foundry.utils.deepClone(normalizeAutomation(value))
 }
 
 export function cloneBehaviorWithFreshIds(entry) {
@@ -31,12 +32,12 @@ export function cloneTemplateShapeWithFreshIds(templateShape) {
 }
 
 export function mergeAutomationOntoItem(current, incoming) {
-   const base = foundry.utils.mergeObject(defaultAutomation(), current ?? {}, {
+   const base = foundry.utils.mergeObject(defaultAutomation(), normalizeAutomation(current), {
       inplace: false,
       insertKeys: true,
       overwrite: true,
    })
-   const add = foundry.utils.mergeObject(defaultAutomation(), incoming ?? {}, {
+   const add = foundry.utils.mergeObject(defaultAutomation(), normalizeAutomation(incoming), {
       inplace: false,
       insertKeys: true,
       overwrite: true,

@@ -159,6 +159,6 @@ async function flushSkillCheckBucket(key) {
          },
       })
    } catch (e) {
-      console.error(`[${MODULE_ID}] skill-check card creation failed`, e)
+      undefined
    }
 }

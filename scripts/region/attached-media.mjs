@@ -67,7 +67,7 @@ export async function createAttachedTiles(region, tileEntries) {
    try {
       await scene.createEmbeddedDocuments("Tile", creates)
    } catch (e) {
-      console.error(`[${MODULE_ID}] Failed to create attached tiles`, e)
+      undefined
    }
 }
 
@@ -424,7 +424,7 @@ export async function createAttachedSounds(region, soundEntries) {
    try {
       await scene.createEmbeddedDocuments("AmbientSound", creates)
    } catch (e) {
-      console.error(`[${MODULE_ID}] Failed to create attached sounds`, e)
+      undefined
    }
 }
 
@@ -471,6 +471,6 @@ export async function createAttachedLights(region, lightEntries) {
    try {
       await scene.createEmbeddedDocuments("AmbientLight", creates)
    } catch (e) {
-      console.error(`[${MODULE_ID}] Failed to create attached lights`, e)
+      undefined
    }
 }
