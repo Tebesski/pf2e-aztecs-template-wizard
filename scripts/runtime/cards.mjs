@@ -40,6 +40,8 @@ const CARD_TARGET_OWNER_ACTIONS = new Set([
    "atw-apply-healing",
 ])
 
+Hooks.once("setup", () => installCardChatContextMenu())
+
 export function installMultiTargetCardListeners() {
    if (typeof document === "undefined") return
    if (window.__ATW_MTCARD_LISTENER_INSTALLED) return
@@ -106,58 +108,233 @@ export function installMultiTargetCardListeners() {
       },
       true,
    )
-   document.addEventListener("contextmenu", onCardResultContextMenu, true)
+   document.addEventListener("contextmenu", recordCardRollContext, true)
+   installCardChatContextMenu()
 }
 
-async function onCardResultContextMenu(ev) {
-   const result = ev.target.closest?.(
-      ".atw-mtcard .degree:not(.hidden), .atw-mtcard .atw-roll-result, .atw-mtcard .atw-nested-check-result strong",
-   )
-   if (!result) return
-   const card = result.closest(".atw-mtcard")
-   const msgLi = result.closest("[data-message-id]")
-   const messageId = msgLi?.dataset.messageId
-   if (!card || !messageId) return
-   const msg = game.messages.get(messageId)
-   const cardFlag = msg?.getFlag?.(MODULE_ID, "card")
-   if (!msg || !cardFlag) return
-   ev.preventDefault()
-   ev.stopPropagation()
+let _atwRollContext = null
 
-   const directControl = result.closest("[data-action]")
-   const nested = result.closest(".atw-nested-check-result")
-   const row = result.closest(".target-row")
-   let btn = null
-   let handler = null
-   if (nested) {
-      btn = nested.querySelector(".atw-roll-reroll[data-action]")
-      if (btn?.dataset.action === "atw-reroll-dice-save") {
-         handler = () => onRollDiceCardSave(btn, card, msg, cardFlag, true, { heroPoint: true })
-      } else if (btn?.dataset.action === "atw-reroll-dice-skill") {
-         handler = () => onRollDiceCardSkill(btn, card, msg, cardFlag, true, { heroPoint: true })
-      }
-   } else if (directControl?.classList?.contains("atw-mtcard-roll-save")) {
-      btn = directControl
-      handler = () => onMTCardRollSave(btn, card, msg, cardFlag, true, { heroPoint: true })
-   } else if (row?.querySelector(".atw-roll-dice-roll")) {
-      btn = row.querySelector(".atw-roll-dice-roll")
-      handler = () => onRollDiceCardRoll(btn, card, msg, cardFlag, true, { heroPoint: true })
-   } else if (row?.querySelector(".atw-roll-skill")) {
-      btn = row.querySelector(".atw-roll-skill")
-      handler = () => onSkillCardRoll(btn, card, msg, cardFlag, true, { heroPoint: true })
+function recordCardRollContext(ev) {
+   _atwRollContext = null
+   const card = ev.target.closest?.(".atw-mtcard")
+   if (!card) return
+   const msgLi = ev.target.closest("[data-message-id]")
+   if (!msgLi?.dataset?.messageId) return
+   const row = ev.target.closest(".target-row")
+   const nested = ev.target.closest(".atw-nested-check-result")
+   _atwRollContext = {
+      messageId: msgLi.dataset.messageId,
+      targetUuid: row?.dataset?.targetUuid ?? null,
+      consequenceIndex: nested?.dataset?.consequenceIndex ?? null,
    }
-   if (!btn || !handler) return
-   if (CARD_TARGET_OWNER_ACTIONS.has(btn.dataset.action) && !(await canOperateCardTarget(btn))) {
-      ui.notifications?.warn(
-         "You can only use Template Wizard card controls for actors you own.",
+}
+
+function liElement(li) {
+   if (!li) return null
+   if (li instanceof HTMLElement) return li
+   if (li[0] instanceof HTMLElement) return li[0]
+   if (li.element instanceof HTMLElement) return li.element
+   return null
+}
+
+function liMessageId(li) {
+   const el = liElement(li)
+   if (!el) return null
+   return (
+      el.dataset?.messageId ??
+      el.closest?.("[data-message-id]")?.dataset?.messageId ??
+      null
+   )
+}
+
+function cardElementFor(messageId) {
+   if (!messageId) return null
+   return document.querySelector(
+      `[data-message-id="${CSS.escape(messageId)}"] .atw-mtcard`,
+   )
+}
+
+function atwRollContextFor(li) {
+   if (!_atwRollContext) return null
+   const id = liMessageId(li)
+   if (id && id !== _atwRollContext.messageId) return null
+   return _atwRollContext
+}
+
+function ownsCardTargetSync(targetUuid) {
+   if (game.user?.isGM) return true
+   const actor = fromUuidSync?.(targetUuid)?.actor
+   return !!actor?.testUserPermission?.(game.user, "OWNER")
+}
+
+function canHeroPointRerollSync(targetUuid) {
+   const base = fromUuidSync?.(targetUuid)?.actor
+   const actor = base?.isOfType?.("familiar") ? base.master : base
+   return !!actor?.isOfType?.("character") && (actor.heroPoints?.value ?? 0) > 0
+}
+
+function cardRerollFor(card, msg, cardFlag, ctx) {
+   const row = card.querySelector?.(
+      `.target-row[data-target-uuid="${CSS.escape(ctx.targetUuid)}"]`,
+   )
+   if (!row) return null
+   if (ctx.consequenceIndex != null) {
+      const nested = row.querySelector(
+         `.atw-nested-check-result[data-consequence-index="${CSS.escape(ctx.consequenceIndex)}"]`,
       )
-      return
+      const btn = nested?.querySelector(".atw-roll-reroll[data-action]")
+      if (btn?.dataset.action === "atw-reroll-dice-save")
+         return {
+            btn,
+            handler: () =>
+               onRollDiceCardSave(btn, card, msg, cardFlag, true, {
+                  heroPoint: true,
+               }),
+         }
+      if (btn?.dataset.action === "atw-reroll-dice-skill")
+         return {
+            btn,
+            handler: () =>
+               onRollDiceCardSkill(btn, card, msg, cardFlag, true, {
+                  heroPoint: true,
+               }),
+         }
+      return null
    }
-   try {
-      await handler()
-   } catch (e) {
-      undefined
+   if (row.dataset.rolled !== "true") return null
+   const saveBtn = row.querySelector(".atw-mtcard-roll-save")
+   if (saveBtn)
+      return {
+         btn: saveBtn,
+         handler: () =>
+            onMTCardRollSave(saveBtn, card, msg, cardFlag, true, {
+               heroPoint: true,
+            }),
+      }
+   const diceBtn = row.querySelector(".atw-roll-dice-roll")
+   if (diceBtn)
+      return {
+         btn: diceBtn,
+         handler: () =>
+            onRollDiceCardRoll(diceBtn, card, msg, cardFlag, true, {
+               heroPoint: true,
+            }),
+      }
+   const skillBtn = row.querySelector(".atw-roll-skill")
+   if (skillBtn)
+      return {
+         btn: skillBtn,
+         handler: () =>
+            onSkillCardRoll(skillBtn, card, msg, cardFlag, true, {
+               heroPoint: true,
+            }),
+      }
+   return null
+}
+
+function inspectKeyForCtx(msg, ctx) {
+   const store = msg?.getFlag?.(MODULE_ID, "inspector") ?? {}
+   if (ctx.targetUuid != null) {
+      const key = inspectorKeyFor(ctx.targetUuid, ctx.consequenceIndex)
+      return store[key] ? key : null
    }
+   const keys = Object.keys(store).filter((k) => store[k])
+   return keys.length === 1 ? keys[0] : null
+}
+
+function rerollCtxFromClick(card, ctx) {
+   if (ctx.targetUuid != null) return ctx
+   const rolled = [...card.querySelectorAll(".target-row")].filter(
+      (r) => r.dataset.rolled === "true",
+   )
+   if (rolled.length === 1)
+      return {
+         messageId: ctx.messageId,
+         targetUuid: rolled[0].dataset.targetUuid,
+         consequenceIndex: null,
+      }
+   return null
+}
+
+let _atwChatMenuWrapped = false
+function installCardChatContextMenu() {
+   if (_atwChatMenuWrapped) return
+   const proto = CONFIG?.ui?.chat?.prototype
+   const original = proto?._getEntryContextOptions
+   if (typeof original !== "function") return
+   _atwChatMenuWrapped = true
+   proto._getEntryContextOptions = function (...args) {
+      const options = original.apply(this, args)
+      if (!Array.isArray(options)) return options
+      const gateKey =
+         (game.release?.generation ?? 13) >= 14 ? "visible" : "condition"
+
+      const inspect = {
+         name: "PF2E.ChatRollDetails.Select",
+         icon: '<i class="fa-solid fa-magnifying-glass"></i>',
+         callback: (li) => {
+            const ctx = atwRollContextFor(li) ?? _atwRollContext
+            const msg = ctx && game.messages?.get?.(ctx.messageId)
+            const key = msg && inspectKeyForCtx(msg, ctx)
+            if (key) openCardRollInspectorByKey(msg, key)
+         },
+      }
+      inspect[gateKey] = (li) => {
+         if (!game.user?.isGM) return false
+         const ctx = atwRollContextFor(li)
+         if (!ctx) return false
+         const msg = game.messages?.get?.(ctx.messageId)
+         if (!msg?.getFlag?.(MODULE_ID, "card")) return false
+         return !!inspectKeyForCtx(msg, ctx)
+      }
+
+      const reroll = {
+         name: "PF2E.RerollMenu.HeroPoint",
+         icon: '<i class="fa-solid fa-hospital-symbol"></i>',
+         callback: async (li) => {
+            const ctx0 = atwRollContextFor(li) ?? _atwRollContext
+            const msg = ctx0 && game.messages?.get?.(ctx0.messageId)
+            const cardFlag = msg?.getFlag?.(MODULE_ID, "card")
+            const card = cardElementFor(ctx0?.messageId)
+            if (!card || !cardFlag) return
+            const ctx = rerollCtxFromClick(card, ctx0)
+            if (!ctx) return
+            const action = cardRerollFor(card, msg, cardFlag, ctx)
+            if (!action) return
+            if (
+               CARD_TARGET_OWNER_ACTIONS.has(action.btn.dataset.action) &&
+               !(await canOperateCardTarget(action.btn))
+            ) {
+               ui.notifications?.warn(
+                  "You can only use Template Wizard card controls for actors you own.",
+               )
+               return
+            }
+            try {
+               await action.handler()
+            } catch (_e) {
+               undefined
+            }
+         },
+      }
+      reroll[gateKey] = (li) => {
+         const ctx0 = atwRollContextFor(li)
+         if (!ctx0) return false
+         const msg = game.messages?.get?.(ctx0.messageId)
+         const cardFlag = msg?.getFlag?.(MODULE_ID, "card")
+         const card = cardElementFor(ctx0.messageId)
+         if (!card || !cardFlag) return false
+         const ctx = rerollCtxFromClick(card, ctx0)
+         if (!ctx) return false
+         if (!ownsCardTargetSync(ctx.targetUuid)) return false
+         if (!canHeroPointRerollSync(ctx.targetUuid)) return false
+         return !!cardRerollFor(card, msg, cardFlag, ctx)
+      }
+
+      options.push(inspect, reroll)
+      return options
+   }
+   proto._getEntryContextOptions._atwWrapped = true
 }
 
 async function canOperateCardTarget(btn) {
@@ -169,7 +346,65 @@ async function canOperateCardTarget(btn) {
    return !!actor?.testUserPermission?.(game.user, "OWNER")
 }
 
-async function onMTCardRollSave(btn, card, msg, cardFlag, isReroll = false, options = {}) {
+function captureInspectorSource(message) {
+   try {
+      if (!message) return null
+      const src = message.toObject?.() ?? {}
+      const pf2e = message.flags?.pf2e ?? src.flags?.pf2e
+      if (!pf2e?.context) return null
+      return {
+         type: src.type ?? message.type ?? "base",
+         author: game.user?.id ?? null,
+         speaker: src.speaker ?? message.speaker ?? {},
+         flags: { pf2e: foundry.utils.deepClone(pf2e) },
+      }
+   } catch (_e) {
+      return null
+   }
+}
+
+function inspectorKeyFor(targetUuid, consequenceIndex = null) {
+   const base =
+      consequenceIndex != null && consequenceIndex !== ""
+         ? `${targetUuid}::${consequenceIndex}`
+         : String(targetUuid)
+   return base.replace(/[.\s]+/g, "_")
+}
+
+async function openCardRollInspectorByKey(msg, key) {
+   const store = msg?.getFlag?.(MODULE_ID, "inspector") ?? {}
+   const raw = store[key]
+   if (!raw) return false
+   let source
+   try {
+      source = typeof raw === "string" ? JSON.parse(raw) : raw
+   } catch (_e) {
+      return false
+   }
+   try {
+      const Msg = ChatMessage.implementation ?? ChatMessage
+      delete source._id
+      const temp = new Msg(source)
+      if (typeof temp.showDetails === "function") {
+         await temp.showDetails()
+         return true
+      }
+   } catch (_e) {
+      ui.notifications?.warn(
+         "Could not open the Roll Inspector for this result.",
+      )
+   }
+   return false
+}
+
+async function onMTCardRollSave(
+   btn,
+   card,
+   msg,
+   cardFlag,
+   isReroll = false,
+   options = {},
+) {
    const row = btn.closest(".target-row")
    if (!row) return
    if (!isReroll && row.dataset.rolled === "true") return
@@ -182,18 +417,33 @@ async function onMTCardRollSave(btn, card, msg, cardFlag, isReroll = false, opti
    const statistic = cardFlag.save
    const dc = Number(cardFlag.dc) || 15
 
-    const saveStat = actor.saves?.[statistic]
-    if (!saveStat?.roll) return
-    if (options.heroPoint && !hasHeroPoint(actor)) return
+   const saveStat = actor.saves?.[statistic]
+   if (!saveStat?.roll) return
+   if (options.heroPoint && !hasHeroPoint(actor)) return
 
-    const saveRoll = await saveStat.roll({
+   const srcItem = cardFlag.sourceItemUuid
+      ? await fromUuid(cardFlag.sourceItemUuid).catch(() => null)
+      : null
+   const extraRollOptions = [
+      ...(cardFlag.basicSave ? ["damaging-effect"] : []),
+      ...(Array.isArray(cardFlag.extraRollOptions)
+         ? cardFlag.extraRollOptions
+         : []),
+   ]
+   let inspectorSource = null
+   const saveRoll = await saveStat.roll({
       dc: { value: dc },
+      item: srcItem ?? undefined,
+      origin: srcItem?.actor ?? undefined,
       createMessage: false,
-      extraRollOptions: cardFlag.basicSave ? ["damaging-effect"] : [],
-    })
-    if (!saveRoll) return
-    if (options.heroPoint && !(await spendHeroPoint(actor))) return
-    await presentCardRoll(saveRoll)
+      extraRollOptions,
+      callback: (_r, _o, message) => {
+         inspectorSource = captureInspectorSource(message)
+      },
+   })
+   if (!saveRoll) return
+   if (options.heroPoint && !(await spendHeroPoint(actor))) return
+   await presentCardRoll(saveRoll)
 
    const d20 = d20TotalFromRoll(saveRoll)
 
@@ -306,7 +556,16 @@ async function onMTCardRollSave(btn, card, msg, cardFlag, isReroll = false, opti
       }
    }
 
-   await persistCardContent(msg, card, targetUuid)
+   await persistCardContent(
+      msg,
+      card,
+      targetUuid,
+      inspectorSource
+         ? { key: inspectorKeyFor(targetUuid), source: inspectorSource }
+         : isReroll
+           ? { key: inspectorKeyFor(targetUuid), clear: true }
+           : null,
+   )
 }
 
 async function onMTCardRerollSave(btn, card, msg, cardFlag) {
@@ -429,7 +688,9 @@ async function spendHeroPoint(actor) {
    const path = heroPointPath(actor)
    const current = Number(path ? foundry.utils.getProperty(actor, path) : NaN)
    if (!path || !Number.isFinite(current) || current <= 0) {
-      ui.notifications?.warn(`${actor?.name ?? "This actor"} has no Hero Points.`)
+      ui.notifications?.warn(
+         `${actor?.name ?? "This actor"} has no Hero Points.`,
+      )
       return false
    }
    try {
@@ -437,7 +698,9 @@ async function spendHeroPoint(actor) {
       return true
    } catch (error) {
       undefined
-      ui.notifications?.warn("Template Wizard could not spend a Hero Point for this actor.")
+      ui.notifications?.warn(
+         "Template Wizard could not spend a Hero Point for this actor.",
+      )
       return false
    }
 }
@@ -480,7 +743,9 @@ function playDiceSound() {
    const src = globalThis.CONFIG?.sounds?.dice
    if (!src) return
    try {
-      const volume = Number(game.settings?.get?.("core", "globalInterfaceVolume"))
+      const volume = Number(
+         game.settings?.get?.("core", "globalInterfaceVolume"),
+      )
       const audioHelper =
          globalThis.foundry?.audio?.AudioHelper ?? globalThis.AudioHelper
       audioHelper?.play?.(
@@ -495,7 +760,14 @@ function playDiceSound() {
    } catch (_e) {}
 }
 
-async function onRollDiceCardRoll(btn, card, msg, cardFlag, isReroll = false, options = {}) {
+async function onRollDiceCardRoll(
+   btn,
+   card,
+   msg,
+   cardFlag,
+   isReroll = false,
+   options = {},
+) {
    const row = btn.closest(".target-row")
    if (!row || (!isReroll && row.dataset.rolled === "true")) return
    const targetUuid = row.dataset.targetUuid
@@ -559,7 +831,11 @@ async function onRollDiceCardRoll(btn, card, msg, cardFlag, isReroll = false, op
             })
          }
       } else if (c?.type === "heal") {
-         const healing = await healingEntryFromConsequence(c, targetUuid, cardFlag)
+         const healing = await healingEntryFromConsequence(
+            c,
+            targetUuid,
+            cardFlag,
+         )
          if (healing) {
             healingEntries.push({
                ...healing,
@@ -598,7 +874,14 @@ async function onRollDiceCardRoll(btn, card, msg, cardFlag, isReroll = false, op
    await persistRollDiceCard(msg, card, targetUuid, state)
 }
 
-async function onRollDiceCardSave(btn, card, msg, cardFlag, isReroll = false, options = {}) {
+async function onRollDiceCardSave(
+   btn,
+   card,
+   msg,
+   cardFlag,
+   isReroll = false,
+   options = {},
+) {
    const row = btn.closest(".target-row")
    if (!row) return
    const targetUuid = row.dataset.targetUuid
@@ -624,10 +907,18 @@ async function onRollDiceCardSave(btn, card, msg, cardFlag, isReroll = false, op
       sourceItem: srcItem,
       region,
    })
+   let inspectorSource = null
    const saveRoll = await saveStat.roll({
       dc: { value: dc },
       item: srcItem ?? undefined,
+      origin: srcItem?.actor ?? undefined,
       createMessage: false,
+      extraRollOptions: Array.isArray(consequence.extraRollOptions)
+         ? consequence.extraRollOptions
+         : [],
+      callback: (_r, _o, message) => {
+         inspectorSource = captureInspectorSource(message)
+      },
    })
    if (!saveRoll) return
    if (options.heroPoint && !(await spendHeroPoint(actor))) return
@@ -675,8 +966,17 @@ async function onRollDiceCardSave(btn, card, msg, cardFlag, isReroll = false, op
             })
          }
       } else if (c?.type === "heal") {
-         const healing = await healingEntryFromConsequence(c, targetUuid, cardFlag)
-         if (healing) nestedHealingEntries.push({ ...healing, id: foundry.utils.randomID(), consequenceIndex })
+         const healing = await healingEntryFromConsequence(
+            c,
+            targetUuid,
+            cardFlag,
+         )
+         if (healing)
+            nestedHealingEntries.push({
+               ...healing,
+               id: foundry.utils.randomID(),
+               consequenceIndex,
+            })
       }
    }
    state.saveOutcomes[consequenceIndex].damageRolls = nestedDamageRolls
@@ -684,7 +984,10 @@ async function onRollDiceCardSave(btn, card, msg, cardFlag, isReroll = false, op
    await setRollDiceState(msg, targetUuid, state)
 
    const immediate = nested.filter(
-      (c) => c?.type !== "damage" && c?.type !== "heal" && !isCardInlineMessageConsequence(c),
+      (c) =>
+         c?.type !== "damage" &&
+         c?.type !== "heal" &&
+         !isCardInlineMessageConsequence(c),
    )
    if (immediate.length) {
       const payload = {
@@ -700,10 +1003,30 @@ async function onRollDiceCardSave(btn, card, msg, cardFlag, isReroll = false, op
    }
 
    await renderRollDiceRowDetails(row, cardFlag, state)
-   await persistRollDiceCard(msg, card, targetUuid, state)
+   await persistRollDiceCard(
+      msg,
+      card,
+      targetUuid,
+      state,
+      inspectorSource
+         ? {
+              key: inspectorKeyFor(targetUuid, consequenceIndex),
+              source: inspectorSource,
+           }
+         : isReroll
+           ? { key: inspectorKeyFor(targetUuid, consequenceIndex), clear: true }
+           : null,
+   )
 }
 
-async function onRollDiceCardSkill(btn, card, msg, cardFlag, isReroll = false, options = {}) {
+async function onRollDiceCardSkill(
+   btn,
+   card,
+   msg,
+   cardFlag,
+   isReroll = false,
+   options = {},
+) {
    const row = btn.closest(".target-row")
    if (!row) return
    const targetUuid = row.dataset.targetUuid
@@ -726,13 +1049,18 @@ async function onRollDiceCardSkill(btn, card, msg, cardFlag, isReroll = false, o
    })
    if (options.heroPoint && !hasHeroPoint(tDoc.actor)) return
    const skillKey = skillKeyForCard(consequence.skill, consequence.lore)
+   let inspectorSource = null
    const result = await rollSkillForCard({
       actor: tDoc.actor,
       skill: skillKey,
       dc,
       item: srcItem,
+      origin: srcItem?.actor ?? undefined,
       extraRollOptions: consequence.extraRollOptions ?? [],
       flavor: cardFlag.flavor ?? null,
+      callback: (_r, _o, message) => {
+         inspectorSource = captureInspectorSource(message)
+      },
    })
    if (!result) return
    if (options.heroPoint && !(await spendHeroPoint(tDoc.actor))) return
@@ -772,8 +1100,17 @@ async function onRollDiceCardSkill(btn, card, msg, cardFlag, isReroll = false, o
             })
          }
       } else if (c?.type === "heal") {
-         const healing = await healingEntryFromConsequence(c, targetUuid, cardFlag)
-         if (healing) nestedHealingEntries.push({ ...healing, id: foundry.utils.randomID(), consequenceIndex })
+         const healing = await healingEntryFromConsequence(
+            c,
+            targetUuid,
+            cardFlag,
+         )
+         if (healing)
+            nestedHealingEntries.push({
+               ...healing,
+               id: foundry.utils.randomID(),
+               consequenceIndex,
+            })
       }
    }
    state.skillOutcomes[consequenceIndex].damageRolls = nestedDamageRolls
@@ -781,7 +1118,10 @@ async function onRollDiceCardSkill(btn, card, msg, cardFlag, isReroll = false, o
    await setRollDiceState(msg, targetUuid, state)
 
    const immediate = nested.filter(
-      (c) => c?.type !== "damage" && c?.type !== "heal" && !isCardInlineMessageConsequence(c),
+      (c) =>
+         c?.type !== "damage" &&
+         c?.type !== "heal" &&
+         !isCardInlineMessageConsequence(c),
    )
    if (immediate.length) {
       const payload = {
@@ -797,10 +1137,30 @@ async function onRollDiceCardSkill(btn, card, msg, cardFlag, isReroll = false, o
    }
 
    await renderRollDiceRowDetails(row, cardFlag, state)
-   await persistRollDiceCard(msg, card, targetUuid, state)
+   await persistRollDiceCard(
+      msg,
+      card,
+      targetUuid,
+      state,
+      inspectorSource
+         ? {
+              key: inspectorKeyFor(targetUuid, consequenceIndex),
+              source: inspectorSource,
+           }
+         : isReroll
+           ? { key: inspectorKeyFor(targetUuid, consequenceIndex), clear: true }
+           : null,
+   )
 }
 
-async function onSkillCardRoll(btn, card, msg, cardFlag, isReroll = false, options = {}) {
+async function onSkillCardRoll(
+   btn,
+   card,
+   msg,
+   cardFlag,
+   isReroll = false,
+   options = {},
+) {
    const row = btn.closest(".target-row")
    if (!row || (!isReroll && row.dataset.rolled === "true")) return
    const targetUuid = row.dataset.targetUuid
@@ -819,13 +1179,18 @@ async function onSkillCardRoll(btn, card, msg, cardFlag, isReroll = false, optio
       region,
    })
    if (options.heroPoint && !hasHeroPoint(tDoc.actor)) return
+   let inspectorSource = null
    const result = await rollSkillForCard({
       actor: tDoc.actor,
       skill: cardFlag.skill,
       dc,
       item: srcItem,
+      origin: srcItem?.actor ?? undefined,
       extraRollOptions: cardFlag.extraRollOptions ?? [],
       flavor: cardFlag.flavor ?? null,
+      callback: (_r, _o, message) => {
+         inspectorSource = captureInspectorSource(message)
+      },
    })
    if (!result) return
    if (options.heroPoint && !(await spendHeroPoint(tDoc.actor))) return
@@ -888,14 +1253,25 @@ async function onSkillCardRoll(btn, card, msg, cardFlag, isReroll = false, optio
             })
          }
       } else if (c?.type === "heal") {
-         const healing = await healingEntryFromConsequence(c, targetUuid, cardFlag)
-         if (healing) state.healingEntries.push({ ...healing, id: foundry.utils.randomID() })
+         const healing = await healingEntryFromConsequence(
+            c,
+            targetUuid,
+            cardFlag,
+         )
+         if (healing)
+            state.healingEntries.push({
+               ...healing,
+               id: foundry.utils.randomID(),
+            })
       }
    }
    await setRollDiceState(msg, targetUuid, state)
 
    const immediate = matched.filter(
-      (c) => c?.type !== "damage" && c?.type !== "heal" && !isCardInlineMessageConsequence(c),
+      (c) =>
+         c?.type !== "damage" &&
+         c?.type !== "heal" &&
+         !isCardInlineMessageConsequence(c),
    )
    if (immediate.length) {
       const payload = {
@@ -911,7 +1287,17 @@ async function onSkillCardRoll(btn, card, msg, cardFlag, isReroll = false, optio
    }
 
    await renderSkillRowDetails(row, cardFlag, state)
-   await persistRollDiceCard(msg, card, targetUuid, state)
+   await persistRollDiceCard(
+      msg,
+      card,
+      targetUuid,
+      state,
+      inspectorSource
+         ? { key: inspectorKeyFor(targetUuid), source: inspectorSource }
+         : isReroll
+           ? { key: inspectorKeyFor(targetUuid), clear: true }
+           : null,
+   )
 }
 
 async function onRollDiceCardApplyDamage(btn, card, msg, cardFlag) {
@@ -995,7 +1381,13 @@ function buildRollDiceStateList(msg, targetUuid, state) {
    return all
 }
 
-async function persistRollDiceCard(msg, card, targetUuid, state) {
+async function persistRollDiceCard(
+   msg,
+   card,
+   targetUuid,
+   state,
+   inspector = null,
+) {
    if (!msg?.id || !card?.outerHTML) return
    const all = buildRollDiceStateList(msg, targetUuid, state)
    const payload = {
@@ -1005,6 +1397,13 @@ async function persistRollDiceCard(msg, card, targetUuid, state) {
       content: card.outerHTML,
       rollDiceState: all ?? [],
    }
+   if (inspector?.key && inspector?.source) {
+      payload.inspectorKey = inspector.key
+      payload.inspectorSource = inspector.source
+   } else if (inspector?.key && inspector?.clear) {
+      payload.inspectorKey = inspector.key
+      payload.inspectorClear = true
+   }
    try {
       if (game.user?.isGM) await gmPersistCardMessage(payload)
       else await executeAsGM("persistCardMessage", payload)
@@ -1013,13 +1412,25 @@ async function persistRollDiceCard(msg, card, targetUuid, state) {
    }
 }
 
-async function persistCardContent(msg, card, targetUuid = null) {
+async function persistCardContent(
+   msg,
+   card,
+   targetUuid = null,
+   inspector = null,
+) {
    if (!msg?.id || !card?.outerHTML) return
    const payload = {
       messageId: msg.id,
       targetUuid,
       userId: game.user?.id ?? null,
       content: card.outerHTML,
+   }
+   if (inspector?.key && inspector?.source) {
+      payload.inspectorKey = inspector.key
+      payload.inspectorSource = inspector.source
+   } else if (inspector?.key && inspector?.clear) {
+      payload.inspectorKey = inspector.key
+      payload.inspectorClear = true
    }
    try {
       if (game.user?.isGM) await gmPersistCardMessage(payload)
@@ -1085,7 +1496,9 @@ async function healingEntryFromConsequence(consequence, targetUuid, cardFlag) {
    if (total <= 0) return null
    return {
       total,
-      healingType: ["untyped", "vitality", "void"].includes(consequence.healingType)
+      healingType: ["untyped", "vitality", "void"].includes(
+         consequence.healingType,
+      )
          ? consequence.healingType
          : "untyped",
    }

@@ -517,6 +517,8 @@ async function rollSkillForCard({
    item,
    extraRollOptions = [],
    flavor,
+   callback,
+   origin,
 }) {
    const stat =
       skill === "perception"
@@ -529,11 +531,13 @@ async function rollSkillForCard({
    return stat.roll({
       dc: { value: Number(dc) || 15 },
       item: item ?? undefined,
+      origin: origin ?? undefined,
       extraRollOptions: Array.isArray(extraRollOptions)
          ? extraRollOptions
          : [],
       flavor,
       createMessage: false,
+      callback,
    })
 }
 

@@ -162,6 +162,7 @@ export function queueTargetHelperSave({
    damageFormula,
    consequences,
    regionUuid,
+   extraRollOptions = [],
 }) {
    if (!isTargetHelperEnabled()) return false
    if (!tokenDoc || !actor) return false
@@ -184,6 +185,9 @@ export function queueTargetHelperSave({
          damageFormula,
          consequences: Array.isArray(consequences) ? consequences : [],
          regionUuid: regionUuid ?? null,
+         extraRollOptions: Array.isArray(extraRollOptions)
+            ? extraRollOptions
+            : [],
          tokens: new Map(),
          timer: null,
       }
@@ -397,6 +401,9 @@ ${damageRollData.instances
                      ? bucket.consequences
                      : [],
                   damageRoll: damageRollData,
+                  extraRollOptions: Array.isArray(bucket.extraRollOptions)
+                     ? bucket.extraRollOptions
+                     : [],
                },
             },
          },

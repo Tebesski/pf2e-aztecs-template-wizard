@@ -356,6 +356,22 @@ export async function gmPersistCardMessage(payload = {}) {
       update[`flags.${MODULE_ID}.rollDiceState`] = payload.rollDiceState
    }
 
+   if (payload.inspectorKey && payload.inspectorSource) {
+      const existing = foundry.utils.deepClone(
+         msg.getFlag(MODULE_ID, "inspector") ?? {},
+      )
+      existing[payload.inspectorKey] = JSON.stringify(payload.inspectorSource)
+      update[`flags.${MODULE_ID}.inspector`] = existing
+   } else if (payload.inspectorKey && payload.inspectorClear) {
+      const existing = foundry.utils.deepClone(
+         msg.getFlag(MODULE_ID, "inspector") ?? {},
+      )
+      if (existing[payload.inspectorKey]) {
+         existing[payload.inspectorKey] = null
+         update[`flags.${MODULE_ID}.inspector`] = existing
+      }
+   }
+
    try {
       await msg.update(update)
       return { ok: true }

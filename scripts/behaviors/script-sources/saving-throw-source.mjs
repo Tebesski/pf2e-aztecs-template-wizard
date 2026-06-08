@@ -99,7 +99,8 @@ if (__useTH) {
       basicSave: BASIC_SAVE,
       damageFormula,
       consequences: CONSEQUENCES,
-      regionUuid: region?.uuid ?? null
+      regionUuid: region?.uuid ?? null,
+      extraRollOptions: EXTRA_ROLL_OPTIONS
     });
   } catch (e) { undefined; }
   return;
