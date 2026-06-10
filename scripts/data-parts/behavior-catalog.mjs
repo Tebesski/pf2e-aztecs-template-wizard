@@ -9,6 +9,7 @@ import {
 } from "./constants.mjs"
 import {
    actorExclusionFields,
+   targetField,
    triggerTargetFields,
 } from "./behavior-field-groups.mjs"
 import { getEnvironmentTypeOptions } from "./options.mjs"
@@ -89,6 +90,7 @@ export const BEHAVIOR_CATALOG = [
             options: getMovementActionOptions,
             default: DEFAULT_MOVEMENT_ACTIONS,
          },
+         targetField(),
          ...actorExclusionFields(),
       ],
    },

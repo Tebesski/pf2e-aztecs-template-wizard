@@ -51,7 +51,7 @@ export function installTemplatePlacementResize() {
          ...options,
          preConfirm: (args) => {
             ACTIVE_RESIZE_ARGS = args ?? ACTIVE_RESIZE_ARGS
-            updatePlacementRangeState(args, state.range)
+            updatePlacementRangeState(args, state.range, true)
             if (isPlacementOutOfRange(state.range)) {
                warnOutOfRange(state.range)
                return false
@@ -89,7 +89,8 @@ export function installTemplatePlacementResize() {
          },
       })
 
-      const removeWheelRotationFallback = installPlacementWheelRotationFallback()
+      const removeWheelRotationFallback =
+         installPlacementWheelRotationFallback()
       try {
          const result = await original.call(this, data, wrappedOptions)
          delegatePlacedTemplateAutomation(data, result)
@@ -118,6 +119,7 @@ function attachSpellCastHeightening(data) {
 function wrapPlacementMove(fn, rangeState = null) {
    return (args) => {
       ACTIVE_RESIZE_ARGS = args ?? ACTIVE_RESIZE_ARGS
+      if (rangeState) rangeState.hasMoved = true
       const result = fn?.(args)
       updatePlacementRangeState(args, rangeState)
       return result
@@ -158,7 +160,10 @@ function isRightClickResizeEnabled() {
 
 function shouldRestrictPlacementRange() {
    try {
-      return game.settings.get(MODULE_ID, "restrictTemplatePlacementRange") !== false
+      return (
+         game.settings.get(MODULE_ID, "restrictTemplatePlacementRange") !==
+         false
+      )
    } catch (_e) {
       return true
    }
@@ -166,7 +171,10 @@ function shouldRestrictPlacementRange() {
 
 function shouldDrawPlacementRangeLine() {
    try {
-      return game.settings.get(MODULE_ID, "drawTemplatePlacementRangeLine") !== false
+      return (
+         game.settings.get(MODULE_ID, "drawTemplatePlacementRangeLine") !==
+         false
+      )
    } catch (_e) {
       return true
    }
@@ -178,7 +186,10 @@ function isPlacementOutOfRange(state) {
 
 function placementRangeLineColor() {
    try {
-      return String(game.settings.get(MODULE_ID, "templatePlacementRangeLineColor") || "#ffcc33")
+      return String(
+         game.settings.get(MODULE_ID, "templatePlacementRangeLineColor") ||
+            "#ffcc33",
+      )
    } catch (_e) {
       return "#ffcc33"
    }
@@ -255,6 +266,7 @@ async function placementRangeStateFor(data) {
       placer,
       currentFeet: 0,
       outOfRange: false,
+      hasMoved: false,
       originalColor: null,
       overlay: null,
       graphics: null,
@@ -285,10 +297,16 @@ async function placerPointForPlacement(data) {
    const controlled = canvas?.tokens?.controlled ?? []
    const token =
       (actor
-         ? controlled.find((tokenPlaceable) => tokenPlaceable.document?.actor?.id === actor.id)
+         ? controlled.find(
+              (tokenPlaceable) =>
+                 tokenPlaceable.document?.actor?.id === actor.id,
+           )
          : controlled[0]) ??
       (actor
-         ? canvas?.tokens?.placeables?.find((tokenPlaceable) => tokenPlaceable.document?.actor?.id === actor.id)
+         ? canvas?.tokens?.placeables?.find(
+              (tokenPlaceable) =>
+                 tokenPlaceable.document?.actor?.id === actor.id,
+           )
          : controlled[0])
    return tokenDocumentCenter(token?.document)
 }
@@ -297,16 +315,23 @@ function tokenDocumentCenter(token) {
    if (!token) return null
    const gridSize = sceneGridSize()
    return {
-      x: Number(token.x ?? 0) + Math.max(1, Number(token.width ?? 1)) * gridSize / 2,
-      y: Number(token.y ?? 0) + Math.max(1, Number(token.height ?? 1)) * gridSize / 2,
+      x:
+         Number(token.x ?? 0) +
+         (Math.max(1, Number(token.width ?? 1)) * gridSize) / 2,
+      y:
+         Number(token.y ?? 0) +
+         (Math.max(1, Number(token.height ?? 1)) * gridSize) / 2,
    }
 }
 
-function updatePlacementRangeState(args, state) {
+function updatePlacementRangeState(args, state, force = false) {
    if (!state || !args?.shape) return
+   if (!state.hasMoved && !force) return
    const target = placementTargetPoint(args.shape)
    if (!target) return
-   const feet = pixelsToFeet(Math.hypot(target.x - state.placer.x, target.y - state.placer.y))
+   const feet = pixelsToFeet(
+      Math.hypot(target.x - state.placer.x, target.y - state.placer.y),
+   )
    state.currentFeet = feet
    state.outOfRange = feet > state.maxFeet
    tintPlacementPreview(args.document, state)
@@ -317,6 +342,7 @@ function placementTargetPoint(shape) {
    const type = shape?.type
    const x = Number(shape?.x ?? 0)
    const y = Number(shape?.y ?? 0)
+   if (type === "emanation") return emanationPlacementPoint(shape)
    if (!Number.isFinite(x) || !Number.isFinite(y)) return null
    if (type === "cone" || type === "line") return { x, y }
    if (type === "rectangle") {
@@ -328,11 +354,35 @@ function placementTargetPoint(shape) {
    return { x, y }
 }
 
+function emanationPlacementPoint(shape) {
+   const origin = shape?.origin
+   if (
+      Number.isFinite(Number(origin?.x)) &&
+      Number.isFinite(Number(origin?.y))
+   ) {
+      return { x: Number(origin.x), y: Number(origin.y) }
+   }
+   const base = shape?.base
+   if (base?.type === "token") {
+      const gridSize = sceneGridSize()
+      return {
+         x:
+            Number(base.x ?? 0) +
+            (Math.max(1, Number(base.width ?? 1)) * gridSize) / 2,
+         y:
+            Number(base.y ?? 0) +
+            (Math.max(1, Number(base.height ?? 1)) * gridSize) / 2,
+      }
+   }
+   return null
+}
+
 function tintPlacementPreview(document, state) {
    if (!document) return
    state.document = document
    if (state.originalColor === null) {
-      state.originalColor = document.color ?? document._source?.color ?? "#a728cc"
+      state.originalColor =
+         document.color ?? document._source?.color ?? "#a728cc"
    }
    document.updateSource?.({
       color: state.outOfRange ? "#ff3030" : state.originalColor,
@@ -388,7 +438,9 @@ function ensurePlacementRangeOverlay(state) {
    })
    overlay.addChild(graphics)
    overlay.addChild(text)
-   ;(canvas?.interface ?? canvas?.controls ?? canvas?.stage)?.addChild?.(overlay)
+   ;(canvas?.interface ?? canvas?.controls ?? canvas?.stage)?.addChild?.(
+      overlay,
+   )
    state.overlay = overlay
    state.graphics = graphics
    state.text = text
@@ -419,11 +471,18 @@ function drawDashedLine(graphics, start, end, color) {
 }
 
 function colorStringToNumber(color) {
-   const normalized = String(color ?? "#ffcc33").trim().replace(/^#/, "")
-   const parsed = Number.parseInt(normalized.length === 3
-      ? normalized.split("").map((char) => char + char).join("")
-      : normalized,
-   16)
+   const normalized = String(color ?? "#ffcc33")
+      .trim()
+      .replace(/^#/, "")
+   const parsed = Number.parseInt(
+      normalized.length === 3
+         ? normalized
+              .split("")
+              .map((char) => char + char)
+              .join("")
+         : normalized,
+      16,
+   )
    return Number.isFinite(parsed) ? parsed : 0xffcc33
 }
 
@@ -440,15 +499,27 @@ function formatCurrentFeet(value) {
 }
 
 function pixelsToFeet(pixels) {
-   return Number(pixels ?? 0) * sceneGridDistance() / sceneGridSize()
+   return (Number(pixels ?? 0) * sceneGridDistance()) / sceneGridSize()
 }
 
 function sceneGridSize() {
-   return Number(canvas?.scene?.grid?.size ?? canvas?.grid?.size ?? canvas?.dimensions?.size) || 100
+   return (
+      Number(
+         canvas?.scene?.grid?.size ??
+            canvas?.grid?.size ??
+            canvas?.dimensions?.size,
+      ) || 100
+   )
 }
 
 function sceneGridDistance() {
-   return Number(canvas?.scene?.grid?.distance ?? canvas?.grid?.distance ?? canvas?.dimensions?.distance) || 5
+   return (
+      Number(
+         canvas?.scene?.grid?.distance ??
+            canvas?.grid?.distance ??
+            canvas?.dimensions?.distance,
+      ) || 5
+   )
 }
 
 function warnOutOfRange(state) {

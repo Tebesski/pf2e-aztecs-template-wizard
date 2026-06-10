@@ -30,6 +30,7 @@ export function getAutomationForRegion(region, providedAutomation = null) {
 
 export function templateVariantMatchesPlaced(v, placedType) {
    if (!v?.type || !placedType) return false
+   if (placedType === "emanation") return v.type === "emanation"
    if (placedType === "cone") return v.type === "cone"
    if (placedType === "circle")
       return v.type === "circle" || v.type === "emanation"
@@ -44,6 +45,7 @@ export function templateVariantMatchesPlaced(v, placedType) {
 export function shapeTypeFromRegion(region) {
    const placedType = region.shapes?.[0]?.type ?? null
    const areaShape = region.getFlag?.("pf2e", "areaShape")
+   if (placedType === "emanation") return "emanation"
    if (placedType === "cone") return "cone"
    if (placedType === "circle") {
       if (areaShape === "emanation") return "emanation"
@@ -89,14 +91,23 @@ export function getWizardShapeOverride(region, providedAutomation = null) {
    const gridDistance = scene?.grid?.distance ?? 5
    const pxPerDistance = gridSize / gridDistance
    const firstShape = region.shapes?.[0]
-   const anchorX = Number(firstShape?.x ?? 0)
-   const anchorY = Number(firstShape?.y ?? 0)
+   const anchor =
+      firstShape?.type === "emanation"
+         ? (shapeOriginPoint(firstShape, gridSize) ?? {
+              x: Number(firstShape?.x ?? 0),
+              y: Number(firstShape?.y ?? 0),
+           })
+         : {
+              x: Number(firstShape?.x ?? 0),
+              y: Number(firstShape?.y ?? 0),
+           }
+   const anchorX = anchor.x
+   const anchorY = anchor.y
    const rotation = Number(firstShape?.rotation ?? 0)
 
    const sizePx = Number(chosen.size ?? 15) * pxPerDistance
    switch (chosen.type) {
       case "circle":
-      case "emanation":
          return {
             type: "circle",
             x: anchorX,
@@ -104,6 +115,17 @@ export function getWizardShapeOverride(region, providedAutomation = null) {
             radius: sizePx,
             hole: false,
          }
+      case "emanation": {
+         const native = nativeEmanationOverride(firstShape, sizePx)
+         if (native) return native
+         return {
+            type: "circle",
+            x: anchorX,
+            y: anchorY,
+            radius: sizePx,
+            hole: false,
+         }
+      }
       case "cone":
          return {
             type: "cone",
@@ -174,4 +196,36 @@ export function getWizardShapeOverride(region, providedAutomation = null) {
       default:
          return null
    }
+}
+
+function nativeEmanationOverride(shape, radius) {
+   if (shape?.type !== "emanation") return null
+   const clone = shape.clone?.()
+   if (!clone?.updateSource) return null
+   clone.updateSource({ radius })
+   return clone
+}
+
+function shapeOriginPoint(shape, gridSize) {
+   const origin = shape?.origin
+   if (finitePoint(origin)) return { x: Number(origin.x), y: Number(origin.y) }
+
+   if (shape?.type === "emanation") {
+      return shapeOriginPoint(shape.base, gridSize)
+   }
+
+   if (shape?.type === "token") {
+      const width = Math.max(1, Number(shape.width ?? 1))
+      const height = Math.max(1, Number(shape.height ?? 1))
+      return {
+         x: Number(shape.x ?? 0) + (width * gridSize) / 2,
+         y: Number(shape.y ?? 0) + (height * gridSize) / 2,
+      }
+   }
+
+   return null
+}
+
+function finitePoint(point) {
+   return Number.isFinite(Number(point?.x)) && Number.isFinite(Number(point?.y))
 }

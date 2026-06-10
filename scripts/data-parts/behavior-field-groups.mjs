@@ -34,6 +34,20 @@ export function actorExclusionFields() {
    ]
 }
 
+export function targetField() {
+   return {
+      key: "target",
+      type: "tagPicker",
+      label: "PF2EATW.Field.Target",
+      addPrompt: "PF2EATW.Field.AddTarget",
+      hint: "PF2EATW.Field.TargetHint",
+      options: TARGET_OPTIONS,
+      default: ["all"],
+      emptyFallback: ["all"],
+      tooltip: "PF2EATW.Tooltip.TargetDefault",
+   }
+}
+
 export function triggerTargetFields(
    defaultTriggers = ["tokenEnter"],
    triggerOptions = TRIGGER_OPTIONS,
@@ -49,17 +63,7 @@ export function triggerTargetFields(
          emptyFallback: defaultTriggers,
          tooltip: "PF2EATW.Tooltip.TriggersDefault",
       },
-      {
-         key: "target",
-         type: "tagPicker",
-         label: "PF2EATW.Field.Target",
-         addPrompt: "PF2EATW.Field.AddTarget",
-         hint: "PF2EATW.Field.TargetHint",
-         options: TARGET_OPTIONS,
-         default: ["all"],
-         emptyFallback: ["all"],
-         tooltip: "PF2EATW.Tooltip.TargetDefault",
-      },
+      targetField(),
       ...actorExclusionFields(),
    ]
 }

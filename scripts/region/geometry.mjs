@@ -186,6 +186,14 @@ export function makeShapeContainsTest(shape) {
    if (!shape || !shape.type) return null
 
    switch (shape.type) {
+      case "emanation":
+      case "token":
+      case "grid": {
+         const native = nativeShapeContainsTest(shape)
+         if (native) return native
+         return null
+      }
+
       case "circle": {
          const cx = Number(shape.x ?? 0)
          const cy = Number(shape.y ?? 0)
@@ -350,6 +358,8 @@ export function makeShapeContainsTest(shape) {
 
 export function shapeBounds(shape) {
    if (!shape || !shape.type) return null
+   const native = nativeShapeBounds(shape)
+   if (native) return native
 
    switch (shape.type) {
       case "circle":
@@ -444,6 +454,37 @@ export function shapeBounds(shape) {
       }
    }
    return null
+}
+
+function nativeShapeContainsTest(shape) {
+   if (typeof shape?.testPoint !== "function") return null
+   return (point) => {
+      try {
+         return !!shape.testPoint(point)
+      } catch (_e) {
+         return false
+      }
+   }
+}
+
+function nativeShapeBounds(shape) {
+   const bounds = shape?.bounds
+   if (
+      !bounds ||
+      !Number.isFinite(Number(bounds.x)) ||
+      !Number.isFinite(Number(bounds.y)) ||
+      !Number.isFinite(Number(bounds.width)) ||
+      !Number.isFinite(Number(bounds.height)) ||
+      Number(bounds.width) <= 0 ||
+      Number(bounds.height) <= 0
+   )
+      return null
+   return {
+      x: Number(bounds.x),
+      y: Number(bounds.y),
+      width: Number(bounds.width),
+      height: Number(bounds.height),
+   }
 }
 
 export function pointInShapes(point, shapeTests) {

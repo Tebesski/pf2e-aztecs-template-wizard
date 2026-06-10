@@ -134,6 +134,11 @@ export function getRegionPolygons(region) {
 }
 
 function approxShapeToPolygon(shape) {
+   const nativeBounds = shapeBoundsFromNative(shape)
+   if (nativeBounds && shape.type === "emanation") {
+      return boundsPolygon(nativeBounds)
+   }
+
    const x = Number(shape.x ?? 0)
    const y = Number(shape.y ?? 0)
    if (shape.type === "rectangle") {
@@ -170,6 +175,35 @@ function approxShapeToPolygon(shape) {
       return out.length >= 3 ? out : null
    }
    return null
+}
+
+function shapeBoundsFromNative(shape) {
+   const bounds = shape?.bounds
+   if (
+      !bounds ||
+      !Number.isFinite(Number(bounds.x)) ||
+      !Number.isFinite(Number(bounds.y)) ||
+      !Number.isFinite(Number(bounds.width)) ||
+      !Number.isFinite(Number(bounds.height)) ||
+      Number(bounds.width) <= 0 ||
+      Number(bounds.height) <= 0
+   )
+      return null
+   return {
+      x: Number(bounds.x),
+      y: Number(bounds.y),
+      width: Number(bounds.width),
+      height: Number(bounds.height),
+   }
+}
+
+function boundsPolygon(bounds) {
+   return [
+      { x: bounds.x, y: bounds.y },
+      { x: bounds.x + bounds.width, y: bounds.y },
+      { x: bounds.x + bounds.width, y: bounds.y + bounds.height },
+      { x: bounds.x, y: bounds.y + bounds.height },
+   ]
 }
 
 export function regionCentroid(region, polys, bounds) {

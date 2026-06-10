@@ -47,7 +47,8 @@ export function templateShapeBadges(automation) {
 
 function feetToPixels(value) {
    const gridSize = canvas?.grid?.size ?? canvas?.dimensions?.size ?? 100
-   const gridDistance = canvas?.grid?.distance ?? canvas?.dimensions?.distance ?? 5
+   const gridDistance =
+      canvas?.grid?.distance ?? canvas?.dimensions?.distance ?? 5
    return (Number(value) || 0) * (gridSize / gridDistance)
 }
 
@@ -76,6 +77,26 @@ function activeTokenSource() {
    }
 }
 
+function supportsNativeEmanationShape() {
+   return !!globalThis.foundry?.data?.BaseShapeData?.TYPES?.emanation
+}
+
+function defaultTokenShape() {
+   return globalThis.CONST?.TOKEN_SHAPES?.RECTANGLE_1 ?? 4
+}
+
+function tokenBaseAtPoint(x, y) {
+   const gridSize = canvas?.grid?.size ?? canvas?.dimensions?.size ?? 100
+   return {
+      type: "token",
+      x: Math.round(Number(x ?? 0) - gridSize / 2),
+      y: Math.round(Number(y ?? 0) - gridSize / 2),
+      width: 1,
+      height: 1,
+      shape: defaultTokenShape(),
+   }
+}
+
 export function shapeDataFromVariant(variant) {
    const { x, y } = mousePosition()
    const type = variant?.type ?? "circle"
@@ -101,7 +122,7 @@ export function shapeDataFromVariant(variant) {
             innerWidth: 0,
             outerWidth: band,
             x,
-           y,
+            y,
          }
       }
       case "square":
@@ -112,11 +133,16 @@ export function shapeDataFromVariant(variant) {
             x: x - size / 2,
             y: y - size / 2,
          }
-      case "emanation": {
-         const base = activeTokenSource()
-         if (base) return { type: "emanation", radius: size, base, x, y }
+      case "emanation":
+         if (supportsNativeEmanationShape()) {
+            return {
+               type: "emanation",
+               base: tokenBaseAtPoint(x, y),
+               radius: size,
+               gridBased: true,
+            }
+         }
          return { type: "circle", radius: size, x, y }
-      }
       case "circle":
       default:
          return { type: "circle", radius: size, x, y }
@@ -158,10 +184,10 @@ export function placeTemplateEntryVariant(entry, variantIndex = 0) {
       visibility: CONST.REGION_VISIBILITY.ALWAYS,
       flags: {
          [FLAG_SCOPE]: {
-             compendiumEntry: makeTemplateEntryFlag(clean),
-             originUuid: compendiumEntryOriginUuid(clean),
-             placementRange: resolvedAutomation.placementRange ?? undefined,
-          },
+            compendiumEntry: makeTemplateEntryFlag(clean),
+            originUuid: compendiumEntryOriginUuid(clean),
+            placementRange: resolvedAutomation.placementRange ?? undefined,
+         },
          pf2e: { areaShape: pf2eAreaShape },
       },
    })

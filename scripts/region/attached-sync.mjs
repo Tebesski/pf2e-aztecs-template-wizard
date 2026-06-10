@@ -588,9 +588,69 @@ export async function promptAttachRegionToToken(region) {
 
    if (!tokenId) return
 
+   const tokenDoc = scene.tokens.get(tokenId)
+   const update = attachmentUpdateForToken(region, tokenDoc, tokenId)
    try {
-      await region.update({ attachment: { token: tokenId } }, { render: false })
+      await region.update(update, { render: false })
+      clearRegionFootprintCache(region)
    } catch (e) {
       undefined
    }
+}
+
+function attachmentUpdateForToken(region, tokenDoc, tokenId) {
+   tokenId = tokenDoc?.id ?? tokenId ?? null
+   const update = { attachment: { token: tokenId } }
+   if (!tokenDoc) return update
+
+   const level = tokenDoc.level ?? tokenDoc._source?.level
+   if (level !== undefined && level !== null) update.levels = [level]
+   if (typeof tokenDoc.hidden === "boolean") update.hidden = tokenDoc.hidden
+
+   const shapes = emanationShapesForAttachedToken(region, tokenDoc)
+   if (shapes) update.shapes = shapes
+   return update
+}
+
+function emanationShapesForAttachedToken(region, tokenDoc) {
+   if (!supportsNativeEmanationShape()) return null
+   if (getActiveTemplateShapeType(region) !== "emanation") return null
+   const shapes = Array.from(region.shapes ?? [])
+   if (shapes.length !== 1) return null
+
+   const shape = shapes[0]
+   const radius = Number(shape?.radius)
+   if (!Number.isFinite(radius) || radius < 0) return null
+
+   return [
+      {
+         type: "emanation",
+         base: tokenBaseForEmanation(tokenDoc),
+         radius,
+         gridBased: shape?.gridBased ?? true,
+         hole: shape?.hole === true,
+      },
+   ]
+}
+
+function supportsNativeEmanationShape() {
+   return !!globalThis.foundry?.data?.BaseShapeData?.TYPES?.emanation
+}
+
+function tokenBaseForEmanation(tokenDoc) {
+   const source = tokenDoc?._source ?? tokenDoc ?? {}
+   return {
+      type: "token",
+      x: Math.round(Number(source.x ?? tokenDoc?.x ?? 0)),
+      y: Math.round(Number(source.y ?? tokenDoc?.y ?? 0)),
+      width: Math.max(1, Number(source.width ?? tokenDoc?.width ?? 1) || 1),
+      height: Math.max(1, Number(source.height ?? tokenDoc?.height ?? 1) || 1),
+      shape: tokenShapeForEmanation(source.shape ?? tokenDoc?.shape),
+   }
+}
+
+function tokenShapeForEmanation(shape) {
+   const fallback = globalThis.CONST?.TOKEN_SHAPES?.RECTANGLE_1 ?? 4
+   const value = Number(shape)
+   return Number.isFinite(value) ? value : fallback
 }

@@ -13,6 +13,16 @@ export function computeRegionBounds(region) {
       maxX = -Infinity,
       maxY = -Infinity
    for (const shape of shapes) {
+      const nativeBounds = shapeBoundsFromNative(shape)
+      if (nativeBounds) {
+         if (nativeBounds.x < minX) minX = nativeBounds.x
+         if (nativeBounds.y < minY) minY = nativeBounds.y
+         if (nativeBounds.x + nativeBounds.width > maxX)
+            maxX = nativeBounds.x + nativeBounds.width
+         if (nativeBounds.y + nativeBounds.height > maxY)
+            maxY = nativeBounds.y + nativeBounds.height
+         continue
+      }
       const x = Number(shape.x ?? 0),
          y = Number(shape.y ?? 0)
       const t = shape.type
@@ -50,6 +60,26 @@ export function computeRegionBounds(region) {
    }
    if (!Number.isFinite(minX) || !Number.isFinite(maxX)) return null
    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
+}
+
+function shapeBoundsFromNative(shape) {
+   const bounds = shape?.bounds
+   if (
+      !bounds ||
+      !Number.isFinite(Number(bounds.x)) ||
+      !Number.isFinite(Number(bounds.y)) ||
+      !Number.isFinite(Number(bounds.width)) ||
+      !Number.isFinite(Number(bounds.height)) ||
+      Number(bounds.width) <= 0 ||
+      Number(bounds.height) <= 0
+   )
+      return null
+   return {
+      x: Number(bounds.x),
+      y: Number(bounds.y),
+      width: Number(bounds.width),
+      height: Number(bounds.height),
+   }
 }
 
 export function tileDataForBounds(

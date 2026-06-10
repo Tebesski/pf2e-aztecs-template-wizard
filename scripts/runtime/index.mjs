@@ -8,11 +8,7 @@ import {
 } from "./player-requests.mjs"
 import { installSustainHooks } from "./sustain.mjs"
 
-export {
-   requestPlayerChoiceDialog,
-   requestPlayerSave,
-   requestPlayerSkillRoll,
-}
+export { requestPlayerChoiceDialog, requestPlayerSave, requestPlayerSkillRoll }
 export { setSocketlibSocket, executeAsGM } from "./socketlib.mjs"
 export {
    gmApplyRuntimeConsequences,
@@ -65,10 +61,13 @@ function installRestrictionHooks() {
    installActionMacroRestrictionPatch()
 
    Hooks.on("preUpdateToken", (token, changed) => {
-      if (!changed || (changed.x === undefined && changed.y === undefined)) return
+      if (!changed || (changed.x === undefined && changed.y === undefined))
+         return
       const actor = token?.actor
       if (!actorHasRestriction(actor, { kind: "move" })) return
-      ui.notifications?.warn(`${actor?.name ?? "This actor"} is restricted from moving.`)
+      ui.notifications?.warn(
+         `${actor?.name ?? "This actor"} is restricted from moving.`,
+      )
       return false
    })
 
@@ -76,7 +75,9 @@ function installRestrictionHooks() {
       if (!isResourceSpendUpdate(item, changed)) return
       const action = makeItemUseRestrictionContext(item)
       if (!actorHasRestriction(item.actor, action)) return
-      ui.notifications?.warn(`${item.actor?.name ?? "This actor"} is restricted from using ${item.name ?? "that item"}.`)
+      ui.notifications?.warn(
+         `${item.actor?.name ?? "This actor"} is restricted from using ${item.name ?? "that item"}.`,
+      )
       return false
    })
 
@@ -84,7 +85,9 @@ function installRestrictionHooks() {
       const context = classifyChatAction(message, data)
       if (!context?.actor || !context.kind) return
       if (!actorHasRestriction(context.actor, context)) return
-      ui.notifications?.warn(`${context.actor.name} is restricted from that action.`)
+      ui.notifications?.warn(
+         `${context.actor.name} is restricted from that action.`,
+      )
       return false
    })
 }
@@ -93,16 +96,22 @@ function installActionMacroRestrictionPatch() {
    const api = game.pf2e
    if (!api?.rollActionMacro || api.__atwRestrictActionMacroPatched) return
    const originalRollActionMacro = api.rollActionMacro
-   api.rollActionMacro = async function atwRestrictedRollActionMacro(args = {}) {
+   api.rollActionMacro = async function atwRestrictedRollActionMacro(
+      args = {},
+   ) {
       const actor = resolveRestrictionMacroActor(args.actorUUID)
       const action = makeActionMacroRestrictionContext(actor, args)
       if (actorHasRestriction(actor, action)) {
-         ui.notifications?.warn(`${actor?.name ?? "This actor"} is restricted from that action.`)
+         ui.notifications?.warn(
+            `${actor?.name ?? "This actor"} is restricted from that action.`,
+         )
          return null
       }
       return originalRollActionMacro.call(this, args)
    }
-   Object.defineProperty(api, "__atwRestrictActionMacroPatched", { value: true })
+   Object.defineProperty(api, "__atwRestrictActionMacroPatched", {
+      value: true,
+   })
 }
 
 function installSpellRestrictionPatch() {
@@ -117,7 +126,9 @@ function installSpellRestrictionPatch() {
       const actor = this.actor ?? spell?.actor
       const context = makeSpellRestrictionContext(actor, spell, options)
       if (actorHasRestriction(actor, context)) {
-         ui.notifications?.warn(`${actor?.name ?? "This actor"} is restricted from casting ${spell?.name ?? "that spell"}.`)
+         ui.notifications?.warn(
+            `${actor?.name ?? "This actor"} is restricted from casting ${spell?.name ?? "that spell"}.`,
+         )
          return false
       }
       return originalCast.call(this, spell, options)
@@ -181,7 +192,11 @@ function itemRestrictionKind(item) {
    if (!item) return null
    if (item.type === "spell") return "spell"
    if (["weapon", "melee"].includes(item.type)) return "strike"
-   if (["consumable", "equipment", "armor", "backpack", "treasure"].includes(item.type)) {
+   if (
+      ["consumable", "equipment", "armor", "backpack", "treasure"].includes(
+         item.type,
+      )
+   ) {
       return "item"
    }
    return "ability"
@@ -189,10 +204,7 @@ function itemRestrictionKind(item) {
 
 function normalizeItemSlug(item) {
    return String(
-      item?.slug ??
-         item?.system?.slug ??
-         item?.system?.slug?.value ??
-         "",
+      item?.slug ?? item?.system?.slug ?? item?.system?.slug?.value ?? "",
    )
 }
 
@@ -257,7 +269,10 @@ function classifyChatAction(message, data = {}) {
    const type = String(context.type ?? "")
    const statistic = resolveStatisticSlug(context, rollOptions, actor)
    let kind = null
-   if (actionSlug === "elemental-blast" || rollOptions.has("action:elemental-blast")) {
+   if (
+      actionSlug === "elemental-blast" ||
+      rollOptions.has("action:elemental-blast")
+   ) {
       kind = "strike"
    } else if (
       actionSlug === "strike" ||
@@ -273,14 +288,24 @@ function classifyChatAction(message, data = {}) {
       kind = "skill"
    } else if (item?.type === "spell" || type.includes("spell")) {
       kind = "spell"
-   } else if (["consumable", "equipment", "armor", "weapon", "backpack", "treasure"].includes(item?.type)) {
+   } else if (
+      [
+         "consumable",
+         "equipment",
+         "armor",
+         "weapon",
+         "backpack",
+         "treasure",
+      ].includes(item?.type)
+   ) {
       kind = "item"
    } else if (item) {
       kind = "ability"
    }
-   const slug = kind === "strike" && rollOptions.has("action:elemental-blast")
-      ? "elemental-blast"
-      : itemSlug
+   const slug =
+      kind === "strike" && rollOptions.has("action:elemental-blast")
+         ? "elemental-blast"
+         : itemSlug
    return { actor, kind, slug, rollOptions, skill: statistic }
 }
 
@@ -303,10 +328,7 @@ function resolveActorFromContext(context) {
 
 function resolveStatisticSlug(context, rollOptions, actor) {
    const direct = String(
-      context.statistic?.slug ??
-         context.statistic ??
-         context.skill ??
-         "",
+      context.statistic?.slug ?? context.statistic ?? context.skill ?? "",
    ).replace(/-check$/, "")
    if (direct) return direct
    for (const option of rollOptions) {
@@ -315,7 +337,11 @@ function resolveStatisticSlug(context, rollOptions, actor) {
    }
    for (const domain of arrayValues(context.domains)) {
       const value = String(domain).replace(/-check$/, "")
-      if (actor?.skills?.[value] || value === "perception" || value.endsWith("-lore")) {
+      if (
+         actor?.skills?.[value] ||
+         value === "perception" ||
+         value.endsWith("-lore")
+      ) {
          return value
       }
    }
@@ -341,7 +367,8 @@ function actorRestrictionEntries(actor) {
 function restrictionMatches(entry, action) {
    if (!entry || entry.kind !== action.kind) return false
    if (entry.kind === "skill") {
-      const wanted = entry.skill === "lore" ? normalizeLoreSlug(entry.lore) : entry.skill
+      const wanted =
+         entry.skill === "lore" ? normalizeLoreSlug(entry.lore) : entry.skill
       if (wanted && action.skill !== wanted) return false
       return restrictionRollOptionsMatch(entry, action)
    }
@@ -403,9 +430,13 @@ function normalizeLoreSlug(value) {
 function installGrantDurationSync() {
    Hooks.on("createItem", (item) => {
       if (!item?.flags?.[MODULE_ID]?.isParentEffect) return
-      setTimeout(() => syncGrantedItemDuration(item).catch((e) => {
-         undefined
-      }), 100)
+      setTimeout(
+         () =>
+            syncGrantedItemDuration(item).catch((e) => {
+               undefined
+            }),
+         100,
+      )
    })
 }
 
@@ -457,7 +488,10 @@ async function syncGrantedItemDuration(parentEffect, attempt = 0) {
          system: {
             duration: foundry.utils.deepClone(duration),
             start: foundry.utils.deepClone(
-               parent.system?.start ?? { value: game.time.worldTime, initiative: null },
+               parent.system?.start ?? {
+                  value: game.time.worldTime,
+                  initiative: null,
+               },
             ),
          },
       }
@@ -491,7 +525,9 @@ async function cleanupRestrictionEffectsForRegionUuid(regionUuid) {
       const ids = Array.from(actor.items ?? [])
          .filter((item) => {
             const flags = item.flags?.[MODULE_ID] ?? {}
-            return flags.restrictionEffect && flags.appliedByRegion === regionUuid
+            return (
+               flags.restrictionEffect && flags.appliedByRegion === regionUuid
+            )
          })
          .map((item) => item.id)
       if (ids.length) {
@@ -529,11 +565,16 @@ function installIgnoredByHook() {
             ? flags.rollOptions.filter((u) => typeof u === "string" && u.trim())
             : []
          const mustNotHave = Array.isArray(flags?.rollOptionsExclude)
-            ? flags.rollOptionsExclude.filter((u) => typeof u === "string" && u.trim())
+            ? flags.rollOptionsExclude.filter(
+                 (u) => typeof u === "string" && u.trim(),
+              )
             : []
          const ignoredBy = Array.isArray(flags?.ignoredBy)
             ? flags.ignoredBy.filter((u) => typeof u === "string" && u.trim())
             : null
+         const targetGroups = Array.isArray(flags?.target)
+            ? flags.target.filter((t) => typeof t === "string" && t.trim())
+            : []
 
          if (token?.actor && (mustHave.length || mustNotHave.length)) {
             const actorOptions = new Set(token.actor.getRollOptions?.() ?? [])
@@ -551,6 +592,30 @@ function installIgnoredByHook() {
             actorHasAny(token.actor, ignoredBy)
          ) {
             return []
+         }
+
+         if (
+            token?.actor &&
+            targetGroups.length &&
+            !targetGroups.includes("all")
+         ) {
+            let placerDisp = 1
+            try {
+               const srcItem = flags?.itemUuid
+                  ? fromUuidSync(flags.itemUuid)
+                  : null
+               const pd =
+                  srcItem?.actor?.getActiveTokens?.()?.[0]?.document
+                     ?.disposition
+               placerDisp = pd === undefined || pd === null ? 1 : pd
+            } catch (e) {
+               undefined
+            }
+            const tokenDoc = token.document ?? token
+            const tokenDisp = tokenDoc?.disposition ?? 1
+            const isAlly = placerDisp === tokenDisp
+            if (targetGroups.includes("allies") && !isAlly) return []
+            if (targetGroups.includes("enemies") && isAlly) return []
          }
       } catch (e) {
          undefined
