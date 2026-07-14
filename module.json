@@ -28,7 +28,18 @@
    },
    "esmodules": ["scripts/module.mjs"],
    "styles": ["styles/module.css"],
-   "languages": [{ "lang": "en", "name": "English", "path": "lang/en.json" }],
+   "languages": [
+      { 
+         "lang": "en",
+         "name": "English", 
+         "path": "lang/en.json"
+      },
+      { 
+         "lang": "cn",
+         "name": "简体中文", 
+         "path": "lang/zh_Hans.json"
+      }
+   ],
    "flags": {
       "pf2e-aztecs-template-wizard": {
          "flagScope": "pf2e-aztecs-template-wizard"
