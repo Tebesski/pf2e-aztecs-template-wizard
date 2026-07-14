@@ -1,4 +1,4 @@
-import { renderModuleTemplate } from "../common/html.mjs"
+import { localize, renderModuleTemplate } from "../common/html.mjs"
 import { renderTabContent } from "../sheet/renderers.mjs"
 import { wireTab } from "../sheet/wire-tab.mjs"
 import {
@@ -13,7 +13,7 @@ export class TemplateEntryEditorApp extends (foundry.applications?.api
       id: "atw-template-entry-editor",
       tag: "div",
       window: {
-         title: "Template Automation",
+         title: "PF2EATW.Compendium.TemplateAutomationTitle",
          icon: "fa-solid fa-wand-magic-sparkles",
          resizable: true,
       },
@@ -31,7 +31,12 @@ export class TemplateEntryEditorApp extends (foundry.applications?.api
          window: {
             ...TemplateEntryEditorApp.DEFAULT_OPTIONS.window,
             ...(options.window ?? {}),
-            title: entry ? `Edit Template Automation: ${clean.name}` : "New Template Automation",
+            title: entry
+               ? localize("PF2EATW.Compendium.EditTemplateTitle").replace(
+                    "{name}",
+                    clean.name,
+                 )
+               : localize("PF2EATW.Compendium.NewTemplateTitle"),
          },
       })
       this.entry = clean
@@ -48,10 +53,10 @@ export class TemplateEntryEditorApp extends (foundry.applications?.api
       return renderModuleTemplate("apps/template-entry-editor.hbs", {
          name: this.entry.name,
          slug: this.entry.slug,
-         nameLabel: "Name",
-         slugLabel: "Slug",
-         saveLabel: "Save",
-         cancelLabel: "Cancel",
+         nameLabel: localize("PF2EATW.Compendium.Name"),
+         slugLabel: localize("PF2EATW.Compendium.SlugLabel"),
+         saveLabel: localize("PF2EATW.Compendium.AddButton"),
+         cancelLabel: localize("PF2EATW.IO.Cancel"),
          editorHtml: renderTabContent(this.item, { showItemActions: false }),
       })
    }
@@ -82,7 +87,9 @@ export class TemplateEntryEditorApp extends (foundry.applications?.api
          this.entry.slug
       this.entry = sanitizeTemplateEntry({
          ...this.item.atwCompendiumEntry,
-         name: String(name || "New Template").trim() || "New Template",
+         name:
+            String(name || localize("PF2EATW.Compendium.NewBlankDefaultName")).trim() ||
+            localize("PF2EATW.Compendium.NewBlankDefaultName"),
          slug: normalizeEntrySlug(slug),
       })
       this.item.name = this.entry.name

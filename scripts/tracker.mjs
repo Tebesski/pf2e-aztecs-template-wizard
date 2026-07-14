@@ -8,8 +8,27 @@ const ENTRIES = new Map();
 let dockEl = null;
 let tickHandle = null;
 
-export function trackRegion({ regionUuid, itemName, durationSeconds, placedAt, sceneId }) {
-  ENTRIES.set(regionUuid, { itemName, durationSeconds, placedAt, sceneId });
+export function trackRegion({
+  regionUuid,
+  itemName,
+  durationSeconds = null,
+  durationRounds = null,
+  remainingRounds = null,
+  totalRounds = null,
+  sustained = false,
+  placedAt,
+  sceneId
+}) {
+  ENTRIES.set(regionUuid, {
+    itemName,
+    durationSeconds,
+    durationRounds,
+    remainingRounds,
+    totalRounds,
+    sustained,
+    placedAt,
+    sceneId
+  });
   persist();
   ensureDock();
   renderRows();
@@ -32,6 +51,10 @@ export function restoreTrackedRegions() {
     ENTRIES.set(e.regionUuid, {
       itemName: e.itemName,
       durationSeconds: e.durationSeconds,
+      durationRounds: e.durationRounds,
+      remainingRounds: e.remainingRounds,
+      totalRounds: e.totalRounds,
+      sustained: !!e.sustained,
       placedAt: e.placedAt,
       sceneId: e.sceneId
     });
@@ -62,17 +85,40 @@ function syncTrackedRegionsFromScene(scene) {
 
 function syncRegionToTracker(region) {
   const flag = region?.getFlag?.(FLAG_SCOPE, "managed");
-  if (!flag?.expiresAt) {
+  if (!flag) {
     if (region?.uuid && ENTRIES.has(region.uuid)) untrackRegion(region.uuid);
     return;
   }
   const placedAt = Number(flag.placedAt ?? game.time.worldTime) || game.time.worldTime;
-  const durationSeconds = Math.max(0, Number(flag.expiresAt) - placedAt);
-  if (!durationSeconds) return;
+  const hasExpiresAt = flag.expiresAt !== null && flag.expiresAt !== undefined && flag.expiresAt !== "";
+  const expiresAt = Number(flag.expiresAt);
+  const storedDuration = flag.durationSeconds;
+  const durationSeconds = hasExpiresAt && Number.isFinite(expiresAt)
+    ? Math.max(0, expiresAt - placedAt)
+    : isLimitedDuration(storedDuration)
+      ? Math.max(0, Number(storedDuration))
+      : null;
+  const schedule = flag.combatExpiration;
+  const scheduleRemaining = schedule?.remainingRounds ?? flag.remainingRounds;
+  const scheduleTotal = schedule?.totalRounds ?? flag.totalRounds;
+  const remainingRounds = isLimitedDuration(scheduleRemaining)
+    ? Math.max(0, Math.floor(Number(scheduleRemaining)))
+    : durationSeconds !== null
+      ? secondsToRounds(durationSeconds)
+      : null;
+  const totalRounds = isLimitedDuration(scheduleTotal)
+    ? Math.max(1, Math.floor(Number(scheduleTotal)))
+    : isLimitedDuration(flag.durationRounds)
+      ? Math.max(1, Math.floor(Number(flag.durationRounds)))
+      : remainingRounds;
   trackRegion({
     regionUuid: region.uuid,
     itemName: flag.itemName ?? flag.itemUuid ?? "Region",
     durationSeconds,
+    durationRounds: flag.durationRounds,
+    remainingRounds,
+    totalRounds,
+    sustained: !!(schedule?.sustained ?? flag.resolvedAutomation?.expiration?.sustained),
     placedAt,
     sceneId: region.parent?.id ?? null
   });
@@ -140,10 +186,12 @@ function renderRows() {
 }
 
 function rowHtml(regionUuid, entry) {
-  const elapsed = Math.max(0, game.time.worldTime - entry.placedAt);
-  const remaining = Math.max(0, entry.durationSeconds - elapsed);
-  const time = formatDuration(remaining);
-  const expired = remaining <= 0 ? "atw-expired" : "";
+  const rounds = entryRounds(entry);
+  const time = formatRounds(rounds.remaining, rounds.total, entry.sustained);
+  const expired = isLimitedDuration(rounds.remaining) && rounds.remaining <= 0 ? "atw-expired" : "";
+  const sustained = entry.sustained ? "atw-sustained" : "atw-unsustained";
+  const itemName = entry.itemName ?? "Region";
+  const panTooltip = loc("PF2EATW.Tracker.PanToName").replace("{name}", itemName);
   const gmControls = game.user?.isGM
     ? `<a data-action="open-settings"
          data-tooltip="${loc("PF2EATW.Tracker.Settings")}">
@@ -155,11 +203,9 @@ function rowHtml(regionUuid, entry) {
       </a>`
     : "";
   return `
-    <li class="atw-dock-row ${expired}" data-uuid="${regionUuid}">
+    <li class="atw-dock-row ${expired} ${sustained}" data-uuid="${regionUuid}">
       <a class="atw-dock-name" data-action="pan-to"
-         data-tooltip="${loc("PF2EATW.Tracker.PanTo")}">
-        ${escapeHTML(entry.itemName ?? "Region")}
-      </a>
+         data-tooltip="${escapeHTML(panTooltip)}"><span class="atw-dock-name-text">${escapeHTML(itemName)}</span></a>
       <span class="atw-dock-time">${time}</span>
       <a data-action="select-region"
          data-tooltip="${loc("PF2EATW.Tracker.SelectRegion")}">
@@ -183,24 +229,58 @@ function tick() {
     const uuid = li.dataset.uuid;
     const entry = ENTRIES.get(uuid);
     if (!entry) continue;
-    const elapsed = Math.max(0, game.time.worldTime - entry.placedAt);
-    const remaining = Math.max(0, entry.durationSeconds - elapsed);
+    const rounds = entryRounds(entry);
     const out = li.querySelector(".atw-dock-time");
-    if (out) out.textContent = formatDuration(remaining);
-    li.classList.toggle("atw-expired", remaining <= 0);
+    if (out) out.textContent = formatRounds(rounds.remaining, rounds.total, entry.sustained);
+    li.classList.toggle(
+      "atw-expired",
+      isLimitedDuration(rounds.remaining) && rounds.remaining <= 0
+    );
   }
 }
 
-function formatDuration(seconds) {
-  seconds = Math.max(0, Math.floor(seconds));
-  const d = Math.floor(seconds / 86400); seconds -= d * 86400;
-  const h = Math.floor(seconds / 3600);  seconds -= h * 3600;
-  const m = Math.floor(seconds / 60);    seconds -= m * 60;
-  const s = seconds;
-  const pad = n => String(n).padStart(2, "0");
-  if (d > 0) return `${d}d ${pad(h)}:${pad(m)}:${pad(s)}`;
-  if (h > 0) return `${pad(h)}:${pad(m)}:${pad(s)}`;
-  return `${pad(m)}:${pad(s)}`;
+function entryRounds(entry) {
+  if (isLimitedDuration(entry.remainingRounds)) {
+    return {
+      remaining: Math.max(0, Math.floor(Number(entry.remainingRounds))),
+      total: isLimitedDuration(entry.totalRounds)
+        ? Math.max(1, Math.floor(Number(entry.totalRounds)))
+        : null
+    };
+  }
+  if (isLimitedDuration(entry.durationSeconds)) {
+    const elapsed = Math.max(0, game.time.worldTime - entry.placedAt);
+    const remainingSeconds = Math.max(0, entry.durationSeconds - elapsed);
+    return {
+      remaining: secondsToRounds(remainingSeconds),
+      total: isLimitedDuration(entry.totalRounds)
+        ? Math.max(1, Math.floor(Number(entry.totalRounds)))
+        : secondsToRounds(entry.durationSeconds)
+    };
+  }
+  if (isLimitedDuration(entry.durationRounds)) {
+    const rounds = Math.max(0, Math.floor(Number(entry.durationRounds)));
+    return { remaining: rounds, total: rounds };
+  }
+  return { remaining: null, total: null };
+}
+
+function formatRounds(remaining, total, sustained = false) {
+  if (!isLimitedDuration(remaining)) return "∞";
+  const current = Math.max(0, Math.floor(Number(remaining)));
+  if (sustained && isLimitedDuration(total)) {
+    const max = Math.max(1, Math.floor(Number(total)));
+    return `${current} / ${max} rnds`;
+  }
+  return `${current} ${current === 1 ? "rnd" : "rnds"}`;
+}
+
+function isLimitedDuration(value) {
+  return value !== null && value !== undefined && Number.isFinite(Number(value));
+}
+
+function secondsToRounds(seconds) {
+  return Math.max(0, Math.ceil(Math.max(0, Number(seconds) || 0) / 6));
 }
 
 function wireDockDrag() {

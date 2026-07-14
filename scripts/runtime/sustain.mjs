@@ -288,13 +288,23 @@ async function promptSustainRegion(region, managed, actor, combatant) {
    })
    const value = await requestPlayerChoiceDialog({
       actor,
-      title: `Sustain ${templateName}`,
-      content: `<p>Sustain <strong>${escapeHTML(templateName)}</strong>?</p>`,
+      title: localizeSustain("PF2EATW.Sustain.Title").replace(
+         "{name}",
+         templateName,
+      ),
+      content: `<p>${localizeSustain("PF2EATW.Sustain.Prompt").replace(
+         "{name}",
+         `<strong>${escapeHTML(templateName)}</strong>`,
+      )}</p>`,
       choices: [
-         { value: "sustain", label: "Sustain", default: true },
+         {
+            value: "sustain",
+            label: localizeSustain("PF2EATW.Sustain.Confirm"),
+            default: true,
+         },
       ],
       cancelValue: "cancel",
-      cancelLabel: "Don't Sustain",
+      cancelLabel: localizeSustain("PF2EATW.Sustain.Decline"),
       modal: false,
       timeoutMs: 120000,
    })
@@ -378,6 +388,13 @@ async function applySustainEffect(actor, region, templateName, managed, combatan
 }
 
 async function refreshSustainedRegionExpiration(region, managed) {
+   if (managed?.combatExpiration) {
+      debugSustain("skip expiration refresh for round-counter expiration", {
+         region: region?.uuid,
+         managed: managedDebug(managed),
+      })
+      return
+   }
    const placedAt = Number(managed?.placedAt)
    const expiresAt = Number(managed?.expiresAt)
    const duration = expiresAt - placedAt
@@ -503,6 +520,10 @@ function sameActor(left, right) {
 function isActiveGM() {
    const activeGM = game.users?.activeGM
    return !!game.user?.isGM && (!activeGM || activeGM.id === game.user.id)
+}
+
+function localizeSustain(key) {
+   return game.i18n?.localize?.(key) ?? key
 }
 
 function escapeHTML(value) {

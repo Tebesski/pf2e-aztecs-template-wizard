@@ -62,8 +62,48 @@
   min-width: 0;
 }
 
-.atw-expiration { gap: 0.4em; }
+.atw-expiration {
+  gap: 0.4em;
+  flex-wrap: nowrap;
+}
 .atw-expiration input[type="number"] { max-width: 6em; }
+.atw-expiration select {
+  flex: 1 1 9em;
+  min-width: 0;
+}
+.atw-expiration-head {
+  justify-content: flex-start;
+  gap: 1em;
+  flex-wrap: wrap;
+}
+.atw-current-turn-end {
+  margin-left: 0;
+}
+.atw-sustain-row {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+.atw-sustain-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  min-width: 0;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+.atw-sustain-controls[hidden] {
+  display: none !important;
+}
+.atw-sustain-controls input[type="number"] {
+  flex: 0 0 4.5em;
+  max-width: 4.5em;
+}
+.atw-sustain-controls select {
+  flex: 0 0 6.75em;
+  min-width: 6.75em;
+  max-width: 6.75em;
+}
 .atw-disabled { opacity: 0.45; pointer-events: none; }
 
 
@@ -129,8 +169,29 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.atw-behavior-label {
+  min-width: 0;
+}
+.atw-behavior-tag {
+  margin-left: 0.45em;
+  font-family: "Space Mono", var(--font-monospace, monospace);
+  font-size: 0.82em;
+  font-weight: 500;
+  opacity: 0.58;
+}
+.atw-behavior-tag-row {
+  margin: 0.45em 0.6em 0;
+}
+.atw-behavior-tag-row .atw-row-label {
+  flex: 0 0 3.5em;
+}
+.atw-behavior-tag-row input::placeholder {
+  color: rgba(0, 0, 0, 0.45);
+  opacity: 1;
+}
 
 
+.atw-behavior.atw-collapsed .atw-behavior-tag-row,
 .atw-behavior.atw-collapsed .atw-behavior-fields,
 .atw-behavior.atw-collapsed .atw-heighten-list { display: none; }
 
@@ -300,7 +361,7 @@
 .atw-dock-row {
   display: flex;
   align-items: center;
-  gap: 0.4em;
+  gap: 0.3em;
   padding: 0.3em 0.6em;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
@@ -309,6 +370,9 @@
 .atw-dock-name {
   flex: 1 1 auto;
   min-width: 0;
+  width: auto;
+  height: auto;
+  justify-content: flex-start;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -317,6 +381,13 @@
   text-decoration: none;
   font-weight: 500;
 }
+.atw-dock-name-text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .atw-dock-name:hover { color: #ffe080; text-decoration: underline; }
 
 .atw-dock-time {
@@ -324,8 +395,12 @@
   font-variant-numeric: tabular-nums;
   font-size: 0.95em;
   opacity: 0.9;
-  min-width: 5em;
+  min-width: max-content;
   text-align: right;
+  margin-left: 0.05em;
+}
+.atw-dock-row.atw-sustained .atw-dock-time {
+  min-width: 5.75em;
 }
 
 .atw-dock-row.atw-expired .atw-dock-time {
@@ -917,6 +992,9 @@ a.atw-uuid-link:hover { text-decoration: underline; }
 .atw-contiguous-row {
   align-items: center;
 }
+.atw-contiguous-row .atw-checkbox-label {
+  min-width: 0;
+}
 .atw-contiguous-toggle {
   display: inline-flex;
   align-items: center;
@@ -939,6 +1017,12 @@ a.atw-uuid-link:hover { text-decoration: underline; }
 .atw-row-unit {
   flex: 0 0 auto;
   white-space: nowrap;
+}
+.atw-wall-restriction {
+  margin: 0.35em 0 0.45em;
+}
+.atw-wall-restriction .atw-row-label {
+  flex: 0 0 9em;
 }
 
 
@@ -2083,6 +2167,51 @@ a.atw-uuid-link:hover { text-decoration: underline; }
   opacity: 0.75;
 }
 
+.atw-compendium-import {
+  width: min(24em, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55em;
+}
+.atw-compendium-import-picker {
+  display: grid;
+  grid-template-columns: max-content minmax(12em, 1fr);
+  align-items: center;
+  gap: 0.45em;
+}
+.atw-compendium-import-id {
+  width: auto;
+}
+.atw-compendium-import-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+}
+.atw-radio-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+}
+.atw-radio-option input {
+  margin: 0;
+}
+
+.atw-player-access-user-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35em;
+}
+.atw-player-access-user-select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.atw-player-access-user-badges {
+  display: flex;
+  flex-wrap: wrap;
+  flex: 0 0 100%;
+  gap: 0.3em;
+}
 
 .atw-mtcard .target-row.crit-success-row {
   filter: blur(0.5px) opacity(0.85);

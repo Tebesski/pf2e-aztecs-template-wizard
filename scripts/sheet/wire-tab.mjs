@@ -71,15 +71,15 @@ export function wireTab($html, item, sheet, renderOptions = {}) {
       foundry.utils.setProperty(a, path, value)
       await saveAutomation(item, a)
 
-      if (path === "expiration.enabled") {
-         $tab.find(".atw-expiration").toggleClass("atw-disabled", !el.checked)
+      if (
+         path === "expiration.enabled" ||
+         path === "expiration.currentTurnEnd"
+      ) {
+         syncExpirationControls($tab, a)
       }
-      if (path === "expiration.unit") {
-         const amountEl = $tab
-            .find('[data-atw-path="expiration.amount"]')
-            .get(0)
-         if (amountEl)
-            amountEl.style.display = el.value === "unlimited" ? "none" : ""
+      if (path === "expiration.sustained") {
+         const controls = $tab.find(".atw-sustain-controls").get(0)
+         if (controls) controls.hidden = !el.checked
       }
       if (path === "advanced.enabled") {
          const sectionEl = $tab.find(".atw-advanced").get(0)
@@ -107,7 +107,7 @@ export function wireTab($html, item, sheet, renderOptions = {}) {
 
    wireTemplateShapeControls($tab, item)
 
-   $tab.on("change", "[data-atw-bprop]", async (ev) => {
+   $tab.on("change input", "[data-atw-bprop]", async (ev) => {
       const el = ev.currentTarget
       const li = el.closest(".atw-behavior")
       if (!li) return
@@ -117,6 +117,11 @@ export function wireTab($html, item, sheet, renderOptions = {}) {
       if (!entry) return
       entry[el.dataset.atwBprop] =
          el.type === "checkbox" ? el.checked : el.value
+      if (el.dataset.atwBprop === "tag") {
+         const tagEl = li.querySelector(".atw-behavior-tag")
+         const index = Array.from(li.parentElement?.children ?? []).indexOf(li)
+         if (tagEl) tagEl.textContent = el.value.trim() || `#${index + 1}`
+      }
       await saveAutomation(item, a)
    })
 
@@ -243,6 +248,19 @@ export function wireTab($html, item, sheet, renderOptions = {}) {
    })
 
    setTimeout(() => bootstrapUuidResolutions(item), 0)
+}
+
+function syncExpirationControls($tab, automation) {
+   const enabled = !!automation.expiration?.enabled
+   const currentTurnEnd = !!automation.expiration?.currentTurnEnd
+   $tab.find(".atw-expiration").toggleClass(
+      "atw-disabled",
+      !enabled || currentTurnEnd,
+   )
+   const currentTurnEndInput = $tab
+      .find('[data-atw-path="expiration.currentTurnEnd"]')
+      .get(0)
+   if (currentTurnEndInput) currentTurnEndInput.disabled = !enabled
 }
 
 function refreshPanel($html, item, sheet, renderOptions = {}) {

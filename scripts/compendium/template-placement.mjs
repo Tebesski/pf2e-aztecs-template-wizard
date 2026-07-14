@@ -164,7 +164,9 @@ export function resolvedAutomationForTemplateEntry(entry) {
 
 export function placeTemplateEntryVariant(entry, variantIndex = 0) {
    if (!canvas?.ready || !canvas.regions?.placeRegion) {
-      ui.notifications?.warn("Open a scene before placing a template.")
+      ui.notifications?.warn(
+         game.i18n.localize("PF2EATW.TemplatePlacement.OpenScene"),
+      )
       return false
    }
    const clean = sanitizeTemplateEntry(entry)
@@ -175,7 +177,7 @@ export function placeTemplateEntryVariant(entry, variantIndex = 0) {
    const shape = shapeDataFromVariant(variant)
    if (!shape) return false
    const pf2eAreaShape = variant?.type === "circle" ? "burst" : variant?.type
-   canvas.regions.placeRegion({
+   const placementData = {
       name: clean.name || "Template",
       shapes: [shape],
       color: game.user.color?.toString?.() ?? "#a728cc",
@@ -190,6 +192,29 @@ export function placeTemplateEntryVariant(entry, variantIndex = 0) {
          },
          pf2e: { areaShape: pf2eAreaShape },
       },
-   })
+   }
+   const levels = currentCanvasLevelIds()
+   if (levels) placementData.levels = levels
+   canvas.regions.placeRegion(placementData)
    return true
+}
+
+export function currentCanvasLevelIds() {
+   const levelId = canvas?.level?.id
+   if (levelId) return [levelId]
+   const levels = collectionValues(canvas?.scene?.levels).filter(
+      (level) => level?.id && level.visible !== false,
+   )
+   return levels.length === 1 ? [levels[0].id] : null
+}
+
+function collectionValues(collection) {
+   if (!collection) return []
+   if (Array.isArray(collection)) return collection.filter(Boolean)
+   if (Array.isArray(collection.contents)) return collection.contents.filter(Boolean)
+   if (typeof collection.values === "function")
+      return Array.from(collection.values()).filter(Boolean)
+   if (typeof collection[Symbol.iterator] === "function")
+      return Array.from(collection).filter(Boolean)
+   return Object.values(collection).filter(Boolean)
 }

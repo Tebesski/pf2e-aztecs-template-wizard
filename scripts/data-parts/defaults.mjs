@@ -8,7 +8,15 @@ export function defaultAutomation() {
     attachable: false,
     contiguous: { enabled: false, count: 2 },
     placementRange: { enabled: false, max: 0 },
-    expiration: { enabled: true, amount: 1, unit: "minutes", sustained: false },
+    expiration: {
+      enabled: true,
+      amount: 1,
+      unit: "minutes",
+      currentTurnEnd: false,
+      sustained: false,
+      sustain: { amount: 1, unit: "minutes" }
+    },
+    wallRestriction: defaultWallRestriction(),
     advanced: defaultAdvanced(),
     templateShape: defaultTemplateShape(),
     behaviors: []
@@ -131,6 +139,14 @@ export function defaultAdvanced() {
   };
 }
 
+export function defaultWallRestriction() {
+  return {
+    enabled: false,
+    type: "move",
+    priority: 0
+  };
+}
+
 export const REGION_VISIBILITY_OPTIONS = [
   { value: 0, label: "PF2EATW.RegionVis.RegionLayer" },
   { value: 4, label: "PF2EATW.RegionVis.RegionLayerUnlocked" },
@@ -160,6 +176,7 @@ export function defaultBehaviorEntry(type) {
     type,
     enabled: true,
     collapsed: false,
+    tag: "",
     system
   };
 }

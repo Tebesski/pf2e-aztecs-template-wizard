@@ -1,0 +1,643 @@
+{
+   "PF2EATW": {
+      "TabLabel": "Шаблоны",
+      "AutomationEnabled": "Включить автоматизацию",
+      "Label": "Имя",
+      "Attachable": "Прикрепляемая",
+      "AttachableHint": "При размещении предложить прикрепить эту область к соседнему или содержащему ее токену.",
+      "Contiguous": "Смежная",
+      "ContiguousHint": "Разместить этот шаблон несколько раз подряд, затем объединить размещенные формы в одну автоматизированную область.",
+      "Expiration": "Истечение",
+      "ExpirationEnabled": "Область истекает",
+      "ExpirationAmount": "Длительность",
+      "CurrentTurnEnd": "В конце текущего хода",
+      "Sustained": "Поддерживаемая",
+      "SustainedUpTo": "до",
+      "SustainedLimit": "Максимальная длительность поддержания",
+      "SustainedUnit": "Единица максимальной длительности поддержания",
+      "Advanced": "Дополнительно",
+      "AdvancedEnabled": "Переопределить внешний вид области",
+      "Behaviors": "Поведения области",
+      "BehaviorTag": "Имя",
+      "AddBehavior": "Добавить поведение",
+      "RemoveBehavior": "Удалить поведение",
+      "ToggleCollapse": "Развернуть / свернуть",
+      "Enabled": "Включено",
+
+      "PlacementRange": {
+         "Max": "Максимальная дальность размещения"
+      },
+
+      "Unit": {
+         "Seconds": "Секунды",
+         "Rounds": "Раунды",
+         "Minutes": "Минуты",
+         "Hours": "Часы",
+         "Days": "Дни",
+         "Unlimited": "Без ограничений"
+      },
+
+      "Behavior": {
+         "AdjustDarknessLevel": "Изменить уровень темноты",
+         "ModifyMovementCost": "Трудная местность",
+         "Environment": "Окружение",
+         "EnvironmentFeature": "Особенность окружения",
+         "ApplyActiveEffect": "Применить активный эффект",
+         "RemoveEffect": "Удалить эффект",
+         "AddCondition": "Применить состояние",
+         "RemoveCondition": "Удалить состояние",
+         "ApplyRuleElement": "Применить элемент правила",
+         "DealDamage": "Нанести урон",
+         "RollDice": "Бросить кости",
+         "SavingThrow": "Спасбросок",
+         "RollSkill": "Проверка навыка",
+         "ChoiceSet": "Набор выбора",
+         "SendChatMessage": "Отправить сообщение в чат",
+         "AddIRW": "Добавить иммунитет / сопротивление / слабость",
+         "AttachTile": "Прикрепить тайл",
+         "AttachSound": "Прикрепить звук",
+         "AttachLight": "Прикрепить источник света",
+         "AttachWalls": "Прикрепить стены",
+         "PlaySound": "Проиграть звук",
+         "DisplayScrollingText": "Показать всплывающий текст",
+         "ExecuteScript": "Выполнить скрипт",
+         "ExecuteMacro": "Выполнить макрос"
+      },
+
+      "Field": {
+         "DarknessMode": "Режим",
+         "DarknessModifier": "Темнота",
+         "TerrainPreset": "Местность",
+         "CustomCost": "Множитель стоимости движения",
+         "AffectedActions": "Затрагиваемые действия движения",
+         "AddMovementAction": "Добавить действие движения…",
+         "EnvironmentTypes": "Окружение",
+         "EnvironmentTypesHint": "Один или несколько типов окружения для этой области сцены.",
+         "AddEnvironmentType": "Добавить тип окружения…",
+         "SurfaceMode": "Режим",
+         "DifficultTerrain": "Трудная местность",
+         "Condition": "Состояние",
+         "Damages": "Записи урона",
+         "AddDamage": "Добавить урон",
+         "Dice": "Кости",
+         "Consequences": "Последствия",
+         "AddConsequence": "Добавить последствие",
+         "RuleElements": "Элементы правил",
+         "ChatMessageText": "Текст сообщения чата",
+         "ChatMessageDynamicVariables": "Динамические переменные: @actor.name, @token.name, @target.name, @targetToken.name, @sourceItem.name, @placer.name, @region.name",
+         "ChatMessagePlaceholder": "Привет, @actor.name! Ты вошел в область.",
+         "SaveType": "Спасбросок",
+         "SkillType": "Навык",
+         "LoreName": "Название знания",
+         "LoreNamePlaceholder": "например, Знания инженерии",
+         "Choices": "Варианты",
+         "DC": "КС",
+         "Duration": "Длительность",
+         "PrivateToGm": "Скрыто от игроков",
+         "BlindToGm": "Слепой бросок для Ведущих",
+         "BasicSave": "Простой спасбросок",
+         "BasicSaveDamages": "Урон простого спасброска",
+         "AppendRollOptions": "Добавить дополнительные опции броска",
+         "RollOptionsExtra": "Дополнительные опции броска",
+         "RollOptionsExtraPlaceholder": "например, feat:fireball, trait:elemental",
+         "SoundRadiusBoost": "Усиление радиуса звука",
+         "IRWType": "Тип",
+         "IRWValue": "Значение",
+         "DamageType": "Тип урона",
+         "WallMove": "Движение",
+         "WallLight": "Свет и темнота",
+         "WallSight": "Зрение",
+         "WallSound": "Звук",
+         "WallDir": "Направление ограничения",
+         "SingleWall": "Одна стена",
+         "WallDestroyable": "Разрушаемая",
+         "WallDestroyableHP": "ОЗ стены",
+         "WallDestroyableAC": "КБ стены",
+         "WallDestroyableHardness": "Твердость",
+         "WallDestroyableActorSize": "Футов на актора",
+         "WallImmunities": "Иммунитеты",
+         "WallResistances": "Сопротивления",
+         "WallWeaknesses": "Слабости",
+         "AddImmunity": "+ Добавить иммунитет…",
+         "AddResistance": "+ Добавить сопротивление…",
+         "AddWeakness": "+ Добавить слабость…",
+         "WallHasStrike": "Добавить атаку Ударом",
+         "WallStrikeName": "Название Удара",
+         "WallStrikeNamePlaceholder": "",
+         "WallStrikeAttack": "Модификатор атаки",
+         "WallStrikeDamages": "Урон Удара",
+         "TileEditor": "Тайл",
+         "ConfigureTile": "Настроить тайл",
+         "ReconfigureTile": "Перенастроить тайл",
+         "AddTile": "Добавить тайл",
+         "TileShape": "Форма области",
+         "TileShapeAny": "Любая форма",
+         "TileScale": "Масштаб тайла",
+         "TilePreserveAspectRatio": "Сохранять пропорции тайла",
+         "SoundEditor": "Звук",
+         "ConfigureSound": "Настроить звук",
+         "ReconfigureSound": "Перенастроить звук",
+         "LightEditor": "Свет",
+         "ConfigureLight": "Настроить свет",
+         "ReconfigureLight": "Перенастроить свет",
+         "SoundFile": "Звуковой файл",
+         "Volume": "Громкость",
+         "BrowseFiles": "Выбрать файлы",
+         "EffectUuid": "UUID активного эффекта",
+         "ApplyToEveryone": "Применять ко всем токенам, не только к владельцам",
+         "ScrollingText": "Текст",
+         "Color": "Цвет",
+         "FontSize": "Размер шрифта",
+         "Source": "Источник скрипта",
+         "MacroUuid": "UUID макроса",
+         "IgnoredBy": "Игнорируется",
+         "IgnoredByHint": "Акторы с любым из этих предметов / эффектов / черт игнорируют это поведение.",
+         "Triggers": "Триггеры",
+         "AddTrigger": "Добавить триггер…",
+         "Target": "Цели",
+         "AddTarget": "Добавить цель…",
+         "RollOptions": "Должны иметь опции броска",
+         "RollOptionsHint": "Через запятую. Токены, у актора которых нет любой из этих опций броска, не запустят поведение.",
+         "RollOptionsPlaceholder": "например, self:trait:dwarf, self:condition:frightened",
+         "RollOptionsExclude": "Не должны иметь опции броска",
+         "RollOptionsExcludeHint": "Через запятую. Токены, у актора которых есть любая из этих опций броска, не запустят поведение.",
+         "RollOptionsExcludePlaceholder": "например, self:condition:flying, self:effect:ignore-terrain",
+         "TargetHint": "Ограничивает, на кого влияет поведение относительно разместившего.",
+         "RemoveConditionStepsTooltip": "На сколько ступеней уменьшить."
+      },
+
+      "Trigger": {
+         "OnPlace": "При размещении",
+         "Entering": "Вход",
+         "Leaving": "Выход",
+         "MovingWithin": "Движение внутри",
+         "TurnStart": "Стоит внутри в начале хода запускающей сущности",
+         "TurnEnd": "Стоит внутри в конце хода запускающей сущности",
+         "AdjacentTurnStart": "Соседствует в начале хода запускающей сущности",
+         "AdjacentTurnEnd": "Соседствует в конце хода запускающей сущности",
+         "WhileAdjacent": "Только при соседстве",
+         "WhileWithin": "Только внутри",
+         "RoundStart": "Стоит внутри в начале раунда",
+         "RoundEnd": "Стоит внутри в конце раунда",
+         "StandingIn": "Стоит внутри"
+      },
+
+      "IrwTag": {
+         "Add": "+ Добавить…"
+      },
+
+      "WallStrikeSuggest": {
+         "FlatTen": "Фикс. +10",
+         "PlacerSpellAttack": "Атака заклинанием разместившего",
+         "PlacerClassDCMinusTen": "КС класса разместившего - 10",
+         "PlacerClassOrSpellDCMinusTen": "КС класса или заклинания разместившего - 10"
+      },
+
+      "DCSuggest": {
+         "PlacerClassDC": "КС класса разместившего",
+         "PlacerSpellDC": "КС заклинания разместившего",
+         "PlacerClassOrSpellDC": "КС класса или заклинания разместившего",
+         "PlacerSpellAttack": "Атака заклинанием разместившего",
+         "ActorClassDC": "КС класса запускающего актора",
+         "ActorSpellDC": "КС заклинания запускающего актора"
+      },
+
+      "Target": {
+         "Allies": "Союзники",
+         "Enemies": "Враги",
+         "All": "Все"
+      },
+
+      "Tooltip": {
+         "TriggersDefault": "По умолчанию: вход.",
+         "TargetDefault": "По умолчанию: все.",
+         "RegionExpiration": "Без ограничений, если не отмечено",
+         "ExpressionDC": "Принимает числа, @пути (например, @actor.system.attributes.classDC.value) и арифметические формулы. Доступные области: actor, token, region, sourceItem, placer.",
+         "BasicSave": "Если отмечено, этот спасбросок наносит урон простого спасброска поверх любых последствий.",
+         "AppendRollOptions": "Если отмечено, добавляет к этому броску дополнительные опции через запятую. Собственные опции броска предмета всегда включены.",
+         "SoundRadiusBoost": "Масштабирует автоматически вычисленный радиус звука.",
+         "TilePreserveAspectRatio": "Если отмечено, тайл сохраняет пропорции исходного изображения и увеличивается, чтобы покрыть всю область (с переполнением по короткой оси при необходимости). Если не отмечено, тайл растягивается точно по ограничивающей рамке области.",
+         "SingleWall": "Если отмечено, размещение шаблона предлагает игроку выбрать одну сторону области, и стена ставится только на этой стороне.",
+         "WallDestroyable": "Если отмечено, поверх стен создаются невидимые NPC с признаком Construct и настроенными ОЗ, КБ и твердостью. Когда ОЗ актора достигают 0, актор и связанные стены удаляются.",
+         "WallDestroyableActorSize": "Футы стены, покрываемые одним актором. Например, 10 = один актор на каждые 10 футов стены, размещенный в середине своего 10-футового сегмента.",
+         "WallHasStrike": "Если отмечено, созданный актор стены получает настроенный предмет ближней атаки Ударом.",
+         "WallStrikeAttack": "Принимает числа, @пути (например, @placer.system.attributes.spellDC.value - 10) и арифметические формулы.",
+         "Duration": "Если включено, созданный эффект истекает через заданное время.",
+         "PrivateToGm": "Взаимоисключается со слепым броском для Ведущих.",
+         "BlindToGm": "Взаимоисключается со скрытием от игроков.",
+         "Expression": "Принимает числа, @пути (например, @actor.level) или арифметические формулы. Доступные области: actor, token, region, sourceItem, placer."
+      },
+
+      "Duration": {
+         "Enabled": "Ограниченная длительность"
+      },
+
+      "UuidList": {
+         "Add": "Добавить еще",
+         "Placeholder": "Вставьте или перетащите UUID предмета…",
+         "Invalid": "(недопустимый UUID)"
+      },
+
+      "DarknessMode": {
+         "Override": "Переопределить",
+         "Brighten": "Осветлить",
+         "Darken": "Затемнить"
+      },
+
+      "SurfaceMode": {
+         "Add": "Добавить",
+         "Remove": "Удалить",
+         "Override": "Переопределить"
+      },
+
+      "Terrain": {
+         "Difficult": "Трудная",
+         "GreaterDifficult": "Очень трудная",
+         "Custom": "Свой множитель"
+      },
+
+      "PF2eDT": {
+         "None": "Нет",
+         "Difficult": "Трудная",
+         "GreaterDifficult": "Очень трудная"
+      },
+
+      "DamageCategory": {
+         "Normal": "Обычный",
+         "Persistent": "Продолжительный",
+         "Splash": "Брызги",
+         "Precision": "Точный"
+      },
+
+      "Move": {
+         "Walk": "Ходьба",
+         "Stride": "Перемещение",
+         "Step": "Шаг",
+         "Run": "Бег",
+         "Crawl": "Ползание",
+         "Climb": "Лазанье",
+         "Swim": "Плавание",
+         "Fly": "Полет",
+         "Burrow": "Рытье",
+         "Jump": "Прыжок",
+         "Displace": "Смещение"
+      },
+
+      "TagPicker": {
+         "Add": "Добавить…"
+      },
+
+      "ConfirmDelete": {
+         "Title": "Подтвердить удаление",
+         "Prompt": "Удалить <strong>{name}</strong>? Это действие нельзя отменить."
+      },
+
+      "Tracker": {
+         "Title": "Активные шаблоны",
+         "Collapse": "Свернуть / развернуть",
+         "PanTo": "Перейти к области",
+         "PanToName": "Перейти к {name}",
+         "SelectRegion": "Выбрать область на сцене",
+         "Settings": "Открыть настройки области",
+         "Delete": "Удалить область и все, что она создала",
+         "DeleteConfirmTitle": "Удалить область?",
+         "DeleteConfirm": "Удалить область <strong>{name}</strong> и все, что она создала? Это действие нельзя отменить.",
+         "UnnamedRegion": "эта область",
+         "NotFound": "Эта область больше не существует."
+      },
+
+      "Setting": {
+         "AutoDamage": "Применять урон автоматически",
+         "AutoDamageHint": "Если включено, поведения нанесения урона автоматически применяют брошенный урон к акторам, которые их запускают.",
+         "PromptGm": "Запрашивать Ведущего перед применением эффектов",
+         "TemplateResizeStep": "Шаг изменения размера шаблона",
+         "TemplateResizeStepHint": "Клетки сетки, добавляемые или удаляемые при изменении размера шаблона во время размещения. Правый щелчок (по умолчанию) уменьшает на это значение; двойной правый щелчок (по умолчанию) увеличивает.",
+         "TemplateResizeRmb": "Изменять размер шаблонов горячими клавишами (правый щелчок по умолчанию)",
+         "TemplateResizeRmbHint": "Если включено, правый щелчок (по умолчанию) во время размещения шаблона уменьшает шаблон, а двойной правый щелчок (по умолчанию) увеличивает.",
+         "RestrictTemplatePlacementRange": "Ограничивать размещение шаблона, если он вне дальности",
+         "RestrictTemplatePlacementRangeHint": "Если включено, шаблоны нельзя размещать дальше настроенной для предмета дальности размещения.",
+         "DrawTemplatePlacementRangeLine": "Рисовать направляющую дальности размещения шаблона",
+         "DrawTemplatePlacementRangeLineHint": "Рисовать направляющую при размещении шаблонов с максимальной дальностью размещения.",
+         "TemplatePlacementRangeLineColor": "Цвет направляющей дальности размещения шаблона",
+         "AllowPlayerTemplates": "Разрешить игрокам создавать шаблоны",
+         "AllowPlayerTemplatesHint": "Разрешить пользователям не-Ведущим выбранного уровня доступа редактировать автоматизацию Template Wizard на принадлежащих им предметах.",
+         "PlayerTemplateAccessLevel": "Уровень доступа по роли",
+         "PlayerTemplateAccessByUser": "Уровень доступа по пользователю",
+         "PlayerTemplateAccessUserIds": "Пользователи с доступом к шаблонам игроков",
+         "ChooseUser": "Выберите пользователя",
+         "RemoveUserAccess": "Удалить доступ пользователя",
+         "AccessNone": "Нет",
+         "AccessTrustedPlayer": "Доверенный игрок",
+         "AccessPlayer": "Игрок",
+         "AllowPlayerTemplateCompendiumSave": "Разрешить сохранять шаблоны в компендиум",
+         "AllowPlayerTemplateImport": "Разрешить импорт",
+         "AllowPlayerTemplateImportHint": "Разрешить импорт JSON автоматизации Template Wizard в принадлежащий игроку шаблон."
+      },
+
+      "Keybinding": {
+         "ShrinkTemplate": "Уменьшить размещаемый шаблон",
+         "GrowTemplate": "Увеличить размещаемый шаблон"
+      },
+
+      "IO": {
+         "Export": "Экспорт",
+         "Import": "Импорт",
+         "Cancel": "Отмена",
+         "ImportDialogTitle": "Импорт автоматизации",
+         "ImportDialogPrompt": "Выберите JSON-файл автоматизации Template Wizard. Он заменит текущую автоматизацию этого предмета.",
+         "AutomationCopied": "JSON автоматизации скопирован в буфер обмена.",
+         "CopiedToClipboard": "Скопировано в буфер обмена.",
+         "ExportFailed": "Экспорт не удался.",
+         "ImportNotAllowed": "Импорт Template Wizard не включен для вашей роли.",
+         "InvalidJson": "Недопустимый JSON.",
+         "InvalidAutomation": "Это не похоже на автоматизацию Template Wizard.",
+         "AutomationImported": "Автоматизация импортирована.",
+         "ImportFailed": "Импорт не удался."
+      },
+
+      "Compendium": {
+         "SettingName": "Компендиум шаблонов",
+         "SettingHint": "Хранилище сохраненных шаблонов Template Wizard",
+         "MenuName": "Компендиум шаблонов",
+         "MenuLabel": "Открыть компендиум шаблонов",
+         "AppTitle": "Компендиум шаблонов",
+         "TemplateAutomationTitle": "Автоматизация шаблона",
+         "TemplateAutomationsTitle": "Автоматизации шаблонов",
+         "EditTemplateTitle": "Редактировать автоматизацию шаблона: {name}",
+         "NewTemplateTitle": "Новая автоматизация шаблона",
+         "Save": "Сохранить в компендиум шаблонов",
+         "ImportFrom": "Импорт из компендиума шаблонов",
+         "ImportButton": "Импорт",
+         "ImportEmpty": "Компендиум шаблонов пуст.",
+         "ImportFileTitle": "Импорт компендиума шаблонов",
+         "ImportFilePrompt": "Выберите JSON-файл компендиума Template Wizard.",
+         "TemplateLabel": "Шаблон",
+         "ImportModeReplace": "Заменить текущую автоматизацию",
+         "ImportModeAppend": "Добавить к текущей автоматизации",
+         "ImportedReplace": "Импортирован \"{name}\" с заменой автоматизации этого предмета.",
+         "ImportedAppend": "Импортирован \"{name}\" поверх автоматизации этого предмета.",
+         "ImportFailed": "Импорт компендиума не удался.",
+         "InvalidEntry": "Эта запись компендиума не содержит автоматизацию Template Wizard.",
+         "ExpectedEntries": "Ожидались записи шаблонов.",
+         "ReplaceMatchingTitle": "Заменить совпадающие шаблоны?",
+         "ReplaceMatchingPrompt": "Импортируемый файл содержит шаблоны ({count}) со slug, которые уже есть в этом компендиуме.",
+         "ReplaceMatchingChoice": "Заменить существующие шаблоны импортируемыми версиями? Если выбрать Нет, существующие шаблоны сохранятся, а совпадающие импортируемые будут пропущены.",
+         "ReplaceMatchingMore": "Еще {count} совпадающих шаблонов используют тот же выбор.",
+         "ImportSummary": "Импортировано шаблонов: {count}.",
+         "ImportSummaryReplaced": "Заменено: {count}.",
+         "ImportSummarySkipped": "Пропущено: {count}.",
+         "SaveDialogTitle": "Сохранить в компендиум шаблонов",
+         "SaveDialogPrompt": "Сохранить текущую автоматизацию как повторно используемый шаблон.",
+         "SaveNotAllowed": "Сохранение шаблонов Template Wizard не включено для вашей роли.",
+         "SaveSuccess": "Сохранено в компендиум шаблонов.",
+         "SaveSuccessSlug": "Сохранено в компендиум шаблонов со slug \"{slug}\".",
+         "SaveFailed": "Сохранение не удалось.",
+         "Name": "Название",
+         "NameLabel": "Название шаблона",
+         "SlugLabel": "Slug",
+         "SlugPlaceholder": "например, wall-of-fire",
+         "SlugHint": "Если задано, любой предмет, созданный или отображенный с совпадающим system.slug, автоматически получит этот шаблон.",
+         "SlugConflictTitle": "Slug уже существует",
+         "SlugConflict": "Шаблон со slug \"{slug}\" уже существует. Этот шаблон нельзя сохранить отдельной записью с таким slug, поэтому продолжение перезапишет существующий шаблон.",
+         "AddButton": "Сохранить",
+         "EditTooltip": "Редактировать название / slug",
+         "EditAutomation": "Редактировать автоматизацию",
+         "EditAutomationTooltip": "Редактировать JSON автоматизации этого шаблона",
+         "SaveAutomationJson": "Сохранить автоматизацию",
+         "DeleteTooltip": "Удалить",
+         "ExportOneTooltip": "Экспортировать этот шаблон как JSON",
+         "NewBlank": "Новая автоматизация",
+         "NewBlankDefaultName": "Новый шаблон",
+         "Untitled": "Без названия",
+         "NoSlug": "no-slug",
+         "SearchTemplates": "Поиск шаблонов",
+         "NoTemplateAutomations": "Сохраненных автоматизаций шаблонов нет.",
+         "BehaviorCountValue": "{count} поведений",
+         "TemplateWizardTool": "Template Wizard",
+         "AddNew": "Добавить",
+         "BulkExport": "Экспортировать все",
+         "BulkImport": "Импортировать все",
+         "BulkImportReplace": "весь компендиум шаблонов (это заменит его)",
+         "BehaviorCount": "# Поведений",
+         "Empty": "Компендиум шаблонов пуст. Сохраняйте автоматизации с листов предметов или импортируйте JSON-файл выше."
+      },
+
+      "Tile": {
+         "NoScene": "Откройте сцену, чтобы настроить это вложение."
+      },
+
+      "TemplatePlacement": {
+         "OpenScene": "Откройте сцену перед размещением шаблона."
+      },
+
+      "Sustain": {
+         "Title": "Поддержать {name}",
+         "Prompt": "Поддержать {name}?",
+         "Confirm": "Поддержать",
+         "Decline": "Не поддерживать"
+      },
+
+      "AdvancedField": {
+         "Color": "Цвет",
+         "Opacity": "Непрозрачность",
+         "Transparency": "Прозрачность",
+         "Visibility": "Видимость",
+         "HighlightMode": "Режим подсветки",
+         "DisplayMeasurements": "Показывать измерения"
+      },
+
+      "WallRestriction": {
+         "Title": "Ограничения стен",
+         "Enabled": "Ограничена",
+         "EnabledHint": "Настраивает, ограничиваются ли формы этой области стенами.",
+         "TypeLabel": "Ограничивается",
+         "Priority": "Порог приоритета",
+         "Type": {
+            "Darkness": "Стены, блокирующие темноту, и источники света с приоритетом > порога",
+            "Light": "Стены, блокирующие свет, и источники темноты с приоритетом >= порога",
+            "Move": "Стены, блокирующие движение",
+            "Sight": "Стены, блокирующие зрение, и источники темноты с приоритетом >= порога",
+            "Sound": "Стены, блокирующие звук"
+         }
+      },
+
+      "WallBuilder": {
+         "DialogTitle": "Создать акторов разрушаемых стен",
+         "WallActors": "Акторы стен",
+         "Name": "Название",
+         "HP": "ОЗ",
+         "AC": "КБ",
+         "Hardness": "Твердость",
+         "SelectedWalls": "Выбранные стены",
+         "Immunities": "Иммунитеты",
+         "Resistances": "Сопротивления",
+         "Weaknesses": "Слабости",
+         "AddStrike": "Добавить Удар",
+         "StrikeName": "Название Удара",
+         "AttackModifier": "Модификатор атаки",
+         "Count": "Количество",
+         "Die": "Кость",
+         "Type": "Тип",
+         "Category": "Категория",
+         "AddDamage": "Добавить урон",
+         "Remove": "Удалить",
+         "RemoveDamage": "Удалить урон",
+         "Spawn": "Создать",
+         "DefaultWallName": "Стена",
+         "DefaultStrikeName": "Удар",
+         "GmOnly": "Только Ведущий может создавать акторов разрушаемых стен.",
+         "SelectWall": "Выберите хотя бы одну стену на слое стен.",
+         "Spawned": "Создано акторов разрушаемых стен: {count}.",
+         "NoneCreated": "Акторы разрушаемых стен не были созданы.",
+         "FormReadFailed": "Не удалось прочитать форму конструктора разрушаемых стен.",
+         "AddDamageRequired": "Добавьте хотя бы одну строку урона для Удара."
+      },
+
+      "Attach": {
+         "DialogTitle": "Прикрепить область к токену",
+         "DialogPrompt": "Выберите токен, к которому нужно прикрепить эту область.",
+         "Confirm": "Прикрепить",
+         "Cancel": "Пропустить",
+         "NoneOption": "Не прикреплять",
+         "NoCandidates": "Внутри или рядом с этой областью нет токенов."
+      },
+
+      "SingleWall": {
+         "DialogTitle": "Выберите сторону",
+         "DialogPrompt": "С какой стороны от <strong>{name}</strong> разместить стену?"
+      },
+
+      "RegionVis": {
+         "RegionLayer": "Только на слое областей",
+         "RegionLayerUnlocked": "Только на слое областей, когда он разблокирован",
+         "GamemasterOnly": "Всегда для Ведущего",
+         "Observers": "Всегда для наблюдателей",
+         "AlwaysForAnyone": "Всегда для всех",
+         "LayerControlled": "Управляется слоем"
+      },
+
+      "RegionHL": {
+         "TrueShapes": "Истинные формы",
+         "CoveredGridSpaces": "Покрытые клетки сетки",
+         "GridIfPlaceable": "Сетка, если размещаемо"
+      },
+
+      "WallMove": {
+         "None": "Нет",
+         "Normal": "Обычное"
+      },
+
+      "WallSense": {
+         "None": "Нет",
+         "Normal": "Обычное",
+         "Limited": "Ограниченное",
+         "Proximity": "Близость",
+         "Distance": "Дистанция"
+      },
+
+      "WallDir": {
+         "Both": "Обе",
+         "Left": "Левая",
+         "Right": "Правая"
+      },
+
+      "Consequence": {
+         "Damage": "Нанести урон",
+         "SavingThrow": "Спасбросок",
+         "SkillCheck": "Проверка навыка",
+         "ApplyEffect": "Применить эффект",
+         "ApplyCondition": "Применить состояние",
+         "RemoveEffect": "Удалить эффект",
+         "RemoveCondition": "Удалить состояние",
+         "ApplyRuleElement": "Применить элемент правила",
+         "AddIRW": "Добавить иммунитет / сопротивление / слабость",
+         "ExecuteMacro": "Выполнить макрос",
+         "ChatMessage": "Сообщение чата (raw)",
+         "SendChatMessage": "Отправить сообщение в чат",
+         "ScrollingText": "Показать всплывающий текст"
+      },
+
+      "Save": {
+         "Fortitude": "Стойкость",
+         "Reflex": "Реакция",
+         "Will": "Воля"
+      },
+
+      "Choice": {
+         "KindSave": "Спасбросок",
+         "KindSkill": "Проверка навыка",
+         "Add": "Добавить выбор"
+      },
+
+      "Skill": {
+         "Acrobatics": "Акробатика",
+         "Arcana": "Аркана",
+         "Athletics": "Атлетика",
+         "Crafting": "Ремесло",
+         "Deception": "Обман",
+         "Diplomacy": "Дипломатия",
+         "Intimidation": "Запугивание",
+         "Medicine": "Медицина",
+         "Nature": "Природа",
+         "Occultism": "Оккультизм",
+         "Performance": "Выступление",
+         "Religion": "Религия",
+         "Society": "Общество",
+         "Stealth": "Скрытность",
+         "Survival": "Выживание",
+         "Thievery": "Воровство",
+         "Perception": "Восприятие",
+         "Lore": "Знания (свои)"
+      },
+
+      "SaveOutcome": {
+         "CriticalSuccess": "Критический успех",
+         "Success": "Успех",
+         "Failure": "Провал",
+         "CriticalFailure": "Критический провал"
+      },
+
+      "IRW": {
+         "Immunity": "Иммунитет",
+         "Resistance": "Сопротивление",
+         "Weakness": "Слабость"
+      },
+
+      "RuleElement": {
+         "Add": "Добавить элемент правила",
+         "Format": "Форматировать JSON",
+         "Placeholder": "{\n  \"key\": \"FlatModifier\",\n  \"selector\": \"all-damage\",\n  \"value\": 1\n}",
+         "Empty": "JSON не может быть пустым.",
+         "NotObject": "Элемент правила должен быть JSON-объектом.",
+         "MissingKey": "У элемента правила должно быть поле 'key'.",
+         "InvalidJson": "Недопустимый синтаксис JSON."
+      },
+
+      "TemplateShape": {
+         "Section": "Переопределение формы шаблона",
+         "Enabled": "Использовать явную форму вместо вывода из размещенной области",
+         "AddVariant": "Добавить вариант формы",
+         "RemoveVariant": "Удалить вариант формы",
+         "Type": "Форма",
+         "Size": "Размер",
+         "Length": "Длина",
+         "Width": "Ширина",
+         "Angle": "Угол",
+         "InnerRadius": "Внутренний радиус",
+         "Circle": "Взрыв",
+         "Cone": "Конус",
+         "Rectangle": "Прямоугольник",
+         "Ellipse": "Эллипс",
+         "Line": "Линия",
+         "Ring": "Кольцо",
+         "Square": "Квадрат",
+         "Emanation": "Эманация"
+      },
+
+      "Error": {
+         "BehaviorCreate": "Template Wizard | Не удалось создать поведения области для \"{name}\".",
+         "FilePickerUnavailable": "FilePicker недоступен в этой сборке Foundry.",
+         "GmDeleteManagedTemplate": "Только Ведущий может удалять управляемые шаблоны Template Wizard."
+      }
+   }
+}

@@ -1,32 +1,32 @@
 <div class="atw-wall-builder-form">
   <section class="atw-wall-builder-section">
-    <h3>Wall Actors</h3>
+    <h3>{{titleLabel}}</h3>
     <div class="atw-wall-builder-grid">
       <label>
-        <span>Name</span>
-        <input type="text" name="name" value="Wall">
+        <span>{{nameLabel}}</span>
+        <input type="text" name="name" value="{{wallName}}">
       </label>
       <label>
-        <span>HP</span>
+        <span>{{hpLabel}}</span>
         <input type="number" name="hp" value="30" min="1" step="1">
       </label>
       <label>
-        <span>AC</span>
+        <span>{{acLabel}}</span>
         <input type="number" name="ac" value="15" min="1" step="1">
       </label>
       <label>
-        <span>Hardness</span>
+        <span>{{hardnessLabel}}</span>
         <input type="number" name="hardness" value="5" min="0" step="1">
       </label>
       <div class="atw-wall-builder-count">
-        <span>Selected walls</span>
+        <span>{{selectedWallsLabel}}</span>
         <strong>{{wallCount}}</strong>
       </div>
     </div>
   </section>
 
   <section class="atw-wall-builder-section" data-wall-list="immunities" data-wall-list-kind="tag">
-    <h3>Immunities</h3>
+    <h3>{{immunitiesLabel}}</h3>
     <div class="atw-wall-builder-picker">
       <select class="atw-wall-builder-type">
         {{#each damageTypes}}
@@ -42,7 +42,7 @@
   </section>
 
   <section class="atw-wall-builder-section" data-wall-list="resistances" data-wall-list-kind="irw">
-    <h3>Resistances</h3>
+    <h3>{{resistancesLabel}}</h3>
     <div class="atw-wall-builder-picker">
       <input type="number" class="atw-wall-builder-value" value="5" min="1" step="1">
       <select class="atw-wall-builder-type">
@@ -59,7 +59,7 @@
   </section>
 
   <section class="atw-wall-builder-section" data-wall-list="weaknesses" data-wall-list-kind="irw">
-    <h3>Weaknesses</h3>
+    <h3>{{weaknessesLabel}}</h3>
     <div class="atw-wall-builder-picker">
       <input type="number" class="atw-wall-builder-value" value="5" min="1" step="1">
       <select class="atw-wall-builder-type">
@@ -78,31 +78,31 @@
   <section class="atw-wall-builder-section">
     <label class="atw-wall-builder-toggle">
       <input type="checkbox" name="hasStrike">
-      <span>Add Strike</span>
+      <span>{{addStrikeLabel}}</span>
     </label>
     <div class="atw-wall-builder-strike" hidden>
       <div class="atw-wall-builder-grid">
         <label>
-          <span>Strike name</span>
-          <input type="text" name="strikeName" value="Slam">
+          <span>{{strikeNameLabel}}</span>
+          <input type="text" name="strikeName" value="{{strikeName}}">
         </label>
         <label>
-          <span>Attack modifier</span>
+          <span>{{attackModifierLabel}}</span>
           <input type="text" name="strikeAttack" value="10">
         </label>
       </div>
       <div class="atw-wall-builder-damage-head">
-        <span>Count</span>
-        <span>Die</span>
-        <span>Type</span>
-        <span>Category</span>
+        <span>{{countLabel}}</span>
+        <span>{{dieLabel}}</span>
+        <span>{{typeLabel}}</span>
+        <span>{{categoryLabel}}</span>
       </div>
       <div class="atw-wall-builder-damage-list">
         {{{damageRowHtml}}}
       </div>
       <button type="button" class="atw-wall-builder-add-damage" data-action="atw-wall-add-damage-row">
         <i class="fa-solid fa-plus"></i>
-        <span>Add Damage</span>
+        <span>{{addDamageLabel}}</span>
       </button>
     </div>
   </section>

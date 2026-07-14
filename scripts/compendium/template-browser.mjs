@@ -1,4 +1,4 @@
-import { renderModuleTemplate } from "../common/html.mjs"
+import { localize, renderModuleTemplate } from "../common/html.mjs"
 import { renderTabContent } from "../sheet/renderers.mjs"
 import { getTemplatesCompendium } from "./templates-compendium.mjs"
 import { isTemplateAutomation } from "./templates-automation.mjs"
@@ -31,9 +31,12 @@ function entryView(entry) {
    return {
       id: entry.id,
       name: entry.name,
-      slug: entry.slug || "no-slug",
+      slug: entry.slug || localize("PF2EATW.Compendium.NoSlug"),
       search: searchableText(entry),
-      behaviorCount: `${behaviorCount} ${behaviorCount === 1 ? "behavior" : "behaviors"}`,
+      behaviorCount: localize("PF2EATW.Compendium.BehaviorCountValue").replace(
+         "{count}",
+         String(behaviorCount),
+      ),
       shapes: templateShapeBadges(resolvedAutomation),
    }
 }
@@ -48,7 +51,7 @@ export class TemplateBrowserApp extends (foundry.applications?.api
       id: "atw-template-browser",
       tag: "div",
       window: {
-         title: "Template Automations",
+         title: "PF2EATW.Compendium.TemplateAutomationsTitle",
          icon: "fa-solid fa-wand-magic-sparkles",
          resizable: true,
       },
@@ -64,8 +67,8 @@ export class TemplateBrowserApp extends (foundry.applications?.api
       return renderModuleTemplate("apps/template-browser.hbs", {
          empty: entries.length === 0,
          entries: entries.map(entryView),
-         searchPlaceholder: "Search templates",
-         emptyLabel: "No template automations saved.",
+         searchPlaceholder: localize("PF2EATW.Compendium.SearchTemplates"),
+         emptyLabel: localize("PF2EATW.Compendium.NoTemplateAutomations"),
       })
    }
 
@@ -102,7 +105,7 @@ export class TemplateReaderApp extends (foundry.applications?.api
       id: "atw-template-reader",
       tag: "div",
       window: {
-         title: "Template Automation",
+         title: "PF2EATW.Compendium.TemplateAutomationTitle",
          icon: "fa-solid fa-wand-magic-sparkles",
          resizable: true,
       },
@@ -129,7 +132,7 @@ export class TemplateReaderApp extends (foundry.applications?.api
    async _renderHTML(_context, _options) {
       return renderModuleTemplate("apps/template-reader.hbs", {
          name: this.entry.name,
-         slug: this.entry.slug || "no-slug",
+         slug: this.entry.slug || localize("PF2EATW.Compendium.NoSlug"),
          shapes: templateShapeBadges(
             resolvedAutomationForTemplateEntry(this.entry),
          ),
@@ -166,7 +169,7 @@ export function registerTemplateBrowserControls() {
       if (!tokens?.tools) return
       const tool = {
          name: "atwTemplateBrowser",
-         title: "Template Wizard",
+         title: localize("PF2EATW.Compendium.TemplateWizardTool"),
          icon: "fa-solid fa-wand-magic-sparkles",
          button: true,
          visible: true,

@@ -2,6 +2,7 @@ import {
    FLAG_SCOPE,
    defaultAutomation,
    defaultAdvanced,
+   defaultWallRestriction,
    shapeVariantsFromSpell,
    normalizeTileAttachments,
 } from "../data.mjs"
@@ -43,11 +44,39 @@ export function normalizeAutomation(raw, item = null) {
          enabled: true,
          amount: 1,
          unit: "minutes",
+         currentTurnEnd: false,
          sustained: false,
+         sustain: { amount: 1, unit: "minutes" },
       }
    }
+   if (merged.expiration.unit === "unlimited") {
+      merged.expiration.enabled = false
+      merged.expiration.unit = "minutes"
+      if (!Number.isFinite(Number(merged.expiration.amount))) {
+         merged.expiration.amount = 1
+      }
+   }
+   if (merged.expiration.unit === "seconds") {
+      merged.expiration.amount = Math.max(
+         1,
+         Math.ceil((Number(merged.expiration.amount) || 1) / 6),
+      )
+      merged.expiration.unit = "rounds"
+   }
+   if (!EXPIRATION_UNIT_VALUES.has(merged.expiration.unit)) {
+      merged.expiration.unit = "minutes"
+   }
+   merged.expiration.enabled = !!merged.expiration.enabled
+   merged.expiration.amount = Math.max(
+      1,
+      Math.floor(Number(merged.expiration.amount) || 1),
+   )
+   merged.expiration.currentTurnEnd = !!merged.expiration.currentTurnEnd
    merged.expiration.sustained = !!merged.expiration.sustained
+   merged.expiration.sustain = normalizeSustainLimit(merged.expiration.sustain)
    merged.expiration.heighten = normalizeHeightenRules(merged.expiration)
+
+   merged.wallRestriction = normalizeWallRestriction(merged.wallRestriction)
 
    if (!raw.templateShape) {
       merged.templateShape = { shapes: shapeVariantsFromSpell(item) }
@@ -70,7 +99,9 @@ export function normalizeAutomation(raw, item = null) {
    }
 
    for (const entry of merged.behaviors) {
-      if (!entry || !entry.system) continue
+      if (!entry) continue
+      entry.tag = String(entry.tag ?? "")
+      if (!entry.system) continue
       entry.heighten = normalizeHeightenRules(entry)
 
       if (
@@ -137,6 +168,35 @@ export function normalizeAutomation(raw, item = null) {
    }
 
    return merged
+}
+
+const EXPIRATION_UNIT_VALUES = new Set(["rounds", "minutes", "hours", "days"])
+
+function normalizeSustainLimit(raw) {
+   const value = raw && typeof raw === "object" ? raw : {}
+   let unit = String(value.unit ?? "minutes")
+   let amount = Math.max(1, Math.floor(Number(value.amount) || 1))
+   if (unit === "seconds") {
+      amount = Math.max(1, Math.ceil(amount / 6))
+      unit = "rounds"
+   }
+   if (!EXPIRATION_UNIT_VALUES.has(unit)) unit = "minutes"
+   return { amount, unit }
+}
+
+function normalizeWallRestriction(raw) {
+   const base = defaultWallRestriction()
+   const value = raw && typeof raw === "object" ? raw : {}
+   const type = ["darkness", "light", "move", "sight", "sound"].includes(
+      value.type,
+   )
+      ? value.type
+      : base.type
+   return {
+      enabled: !!value.enabled,
+      type,
+      priority: Math.max(0, Math.floor(Number(value.priority) || 0)),
+   }
 }
 
 export function readAutomation(item) {

@@ -119,7 +119,10 @@ async function showChoiceDialog({
               }))
          buttons.push({
             action: "cancel",
-            label: cancelLabel || game.i18n?.localize?.("Cancel") || "Cancel",
+            label:
+               cancelLabel ||
+               game.i18n?.localize?.("PF2EATW.IO.Cancel") ||
+               "Cancel",
             callback: () => done(cancelValue),
          })
          DV2.wait({
@@ -160,7 +163,10 @@ async function showChoiceDialog({
             }
          }
          buttons.cancel = {
-            label: cancelLabel || game.i18n?.localize?.("Cancel") || "Cancel",
+            label:
+               cancelLabel ||
+               game.i18n?.localize?.("PF2EATW.IO.Cancel") ||
+               "Cancel",
             callback: () => done(cancelValue),
          }
          const dlg = new Dialog({

@@ -4,6 +4,10 @@ import {
 } from "../data.mjs"
 import { localize } from "../common/html.mjs"
 import {
+   canImportTemplateJson,
+   canSaveTemplatesToCompendium,
+} from "../settings/player-template-access.mjs"
+import {
    cloneAutomation,
    confirmDelete,
    isTemplateAutomation,
@@ -40,16 +44,20 @@ export function wireAutomationImportExportControls(
             saveDataToFile(json, "application/json", filename)
          } else {
             await navigator.clipboard?.writeText(json)
-            ui.notifications?.info("Automation JSON copied to clipboard.")
+            ui.notifications?.info(localize("PF2EATW.IO.AutomationCopied"))
          }
       } catch (e) {
          undefined
-         ui.notifications?.error("Export failed.")
+         ui.notifications?.error(localize("PF2EATW.IO.ExportFailed"))
       }
    })
 
    $tab.on("click", "[data-action='atw-import']", async (ev) => {
       ev.preventDefault()
+      if (!canImportTemplateJson()) {
+         ui.notifications?.warn(localize("PF2EATW.IO.ImportNotAllowed"))
+         return
+      }
       try {
          const json = await promptForImportJson()
          if (!json) return
@@ -57,28 +65,30 @@ export function wireAutomationImportExportControls(
          try {
             parsed = JSON.parse(json)
          } catch (_e) {
-            ui.notifications?.error("Invalid JSON.")
+            ui.notifications?.error(localize("PF2EATW.IO.InvalidJson"))
             return
          }
          const incoming = parsed?.automation ?? parsed
          if (!isTemplateAutomation(incoming)) {
-            ui.notifications?.error(
-               "That doesn't look like a Template Wizard automation.",
-            )
+            ui.notifications?.error(localize("PF2EATW.IO.InvalidAutomation"))
             return
          }
 
          await saveAutomation(item, incoming)
-         ui.notifications?.info("Automation imported.")
+         ui.notifications?.info(localize("PF2EATW.IO.AutomationImported"))
          refreshPanel($html, item, sheet)
       } catch (e) {
          undefined
-         ui.notifications?.error("Import failed.")
+         ui.notifications?.error(localize("PF2EATW.IO.ImportFailed"))
       }
    })
 
    $tab.on("click", "[data-action='atw-save-to-compendium']", async (ev) => {
       ev.preventDefault()
+      if (!canSaveTemplatesToCompendium()) {
+         ui.notifications?.warn(localize("PF2EATW.Compendium.SaveNotAllowed"))
+         return
+      }
       try {
          const info = await promptForSlug(item)
          if (info === null) return
@@ -87,12 +97,15 @@ export function wireAutomationImportExportControls(
          if (!saved) return
          ui.notifications?.info(
             info.slug
-               ? `Saved to Templates Compendium with slug "${info.slug}".`
-               : "Saved to Templates Compendium.",
+               ? localize("PF2EATW.Compendium.SaveSuccessSlug").replace(
+                    "{slug}",
+                    info.slug,
+                 )
+               : localize("PF2EATW.Compendium.SaveSuccess"),
          )
       } catch (e) {
          undefined
-         ui.notifications?.error("Save failed.")
+         ui.notifications?.error(localize("PF2EATW.Compendium.SaveFailed"))
       }
    })
 
@@ -109,9 +122,7 @@ export function wireAutomationImportExportControls(
                item,
             )
             if (!isTemplateAutomation(imported)) {
-               ui.notifications?.error(
-                  "That compendium entry does not contain Template Wizard automation.",
-               )
+               ui.notifications?.error(localize("PF2EATW.Compendium.InvalidEntry"))
                return
             }
             if (result.mode === "append") {
@@ -138,7 +149,7 @@ export function wireAutomationImportExportControls(
             refreshPanel($html, item, sheet)
          } catch (e) {
             undefined
-            ui.notifications?.error("Compendium import failed.")
+            ui.notifications?.error(localize("PF2EATW.Compendium.ImportFailed"))
          }
       },
    )

@@ -119,7 +119,7 @@ try {
         action: b.action, label: b.label, default: b.default,
         callback: () => resolve(i)
       }));
-      buttonsCfg.push({ action: "cancel", label: "Cancel", callback: () => resolve(-1) });
+      buttonsCfg.push({ action: "cancel", label: game.i18n?.localize?.("PF2EATW.IO.Cancel") ?? "Cancel", callback: () => resolve(-1) });
       DV2.wait({
         window: { title: __title }, content: __content,
         buttons: buttonsCfg, rejectClose: false, modal: true,
@@ -132,7 +132,7 @@ try {
       for (let i = 0; i < buttons.length; i++) {
         btnObj["c" + i] = { label: buttons[i].label, callback: () => resolve(i) };
       }
-      btnObj.cancel = { label: "Cancel", callback: () => resolve(-1) };
+      btnObj.cancel = { label: game.i18n?.localize?.("PF2EATW.IO.Cancel") ?? "Cancel", callback: () => resolve(-1) };
       new Dialog({ title: __title, content: __content, buttons: btnObj, close: () => resolve(-1) }).render(true);
     });
   }

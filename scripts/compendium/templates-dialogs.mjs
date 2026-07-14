@@ -1,68 +1,22 @@
 import { localize, renderModuleTemplate } from "../common/html.mjs"
 
 export async function promptForImportJson() {
-   const title = localize("PF2EATW.IO.ImportDialogTitle")
-   const prompt = localize("PF2EATW.IO.ImportDialogPrompt")
-   const content = await renderModuleTemplate("dialogs/import-json.hbs", {
-      prompt,
-      rows: 14,
-      value: "",
-   })
-   const DV2 = foundry?.applications?.api?.DialogV2
-   if (DV2?.wait) {
-      return await new Promise((resolve) => {
-         DV2.wait({
-            window: { title },
-            content,
-            buttons: [
-               {
-                  action: "import",
-                  label: localize("PF2EATW.IO.Import"),
-                  default: true,
-                  callback: (_e, _b, dlg) => {
-                     const ta = dlg.element.querySelector(
-                        ".atw-import-textarea",
-                     )
-                     resolve(ta?.value ?? "")
-                  },
-               },
-               {
-                  action: "cancel",
-                  label: "Cancel",
-                  callback: () => resolve(null),
-               },
-            ],
-            rejectClose: false,
-            modal: true,
-            close: () => resolve(null),
-         }).catch(() => resolve(null))
-      })
-   }
-
-   return await new Promise((resolve) => {
-      new Dialog({
-         title,
-         content,
-         buttons: {
-            import: {
-               label: localize("PF2EATW.IO.Import"),
-               callback: (html) => {
-                  const ta = html[0].querySelector(".atw-import-textarea")
-                  resolve(ta?.value ?? "")
-               },
-            },
-            cancel: { label: "Cancel", callback: () => resolve(null) },
-         },
-         default: "import",
-         close: () => resolve(null),
-      }).render(true)
+   return promptForJsonFile({
+      title: localize("PF2EATW.IO.ImportDialogTitle"),
+      prompt: localize("PF2EATW.IO.ImportDialogPrompt"),
    })
 }
 
 export async function promptForImportFile() {
-   const title = "Import Templates Compendium"
+   return promptForJsonFile({
+      title: localize("PF2EATW.Compendium.ImportFileTitle"),
+      prompt: localize("PF2EATW.Compendium.ImportFilePrompt"),
+   })
+}
+
+async function promptForJsonFile({ title, prompt }) {
    const content = await renderModuleTemplate("dialogs/import-file.hbs", {
-      prompt: "Choose a Template Wizard compendium JSON file.",
+      prompt,
       accept: ".json,application/json",
    })
    const readFile = async (root) => {
@@ -85,14 +39,14 @@ export async function promptForImportFile() {
             buttons: [
                {
                   action: "import",
-                  label: "Import",
+                  label: localize("PF2EATW.IO.Import"),
                   default: true,
                   callback: async (_e, _b, dlg) =>
                      resolve(await readFile(dlg.element)),
                },
                {
                   action: "cancel",
-                  label: "Cancel",
+                  label: localize("PF2EATW.IO.Cancel"),
                   callback: () => resolve(null),
                },
             ],
@@ -108,11 +62,14 @@ export async function promptForImportFile() {
          content,
          buttons: {
             import: {
-               label: "Import",
+               label: localize("PF2EATW.IO.Import"),
                callback: async (html) =>
                   resolve(await readFile(html[0])),
             },
-            cancel: { label: "Cancel", callback: () => resolve(null) },
+            cancel: {
+               label: localize("PF2EATW.IO.Cancel"),
+               callback: () => resolve(null),
+            },
          },
          default: "import",
          close: () => resolve(null),
@@ -160,7 +117,7 @@ export async function promptForSlug(item) {
                },
                {
                   action: "cancel",
-                  label: "Cancel",
+                  label: localize("PF2EATW.IO.Cancel"),
                   callback: () => resolve(null),
                },
             ],
@@ -188,7 +145,10 @@ export async function promptForSlug(item) {
                   })
                },
             },
-            cancel: { label: "Cancel", callback: () => resolve(null) },
+            cancel: {
+               label: localize("PF2EATW.IO.Cancel"),
+               callback: () => resolve(null),
+            },
          },
          default: "save",
          close: () => resolve(null),

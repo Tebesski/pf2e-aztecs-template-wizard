@@ -9,6 +9,7 @@ import {
 } from "./heightening.mjs";
 import {
   TemplatesCompendiumApp,
+  gmSaveAutomationToCompendium,
   registerTemplatesCompendiumHooks
 } from "./compendium/templates-compendium.mjs";
 import {
@@ -71,6 +72,7 @@ Hooks.once("socketlib.ready", () => {
   socket.register("finalizeContiguousPlacement", gmFinalizeContiguousPlacement);
   socket.register("deleteManagedRegion", gmDeleteManagedRegion);
   socket.register("catchupEffectLifecycleForToken", gmCatchupEffectLifecycleForToken);
+  socket.register("saveAutomationToCompendium", gmSaveAutomationToCompendium);
   socket.register("applyRuntimeConsequences", gmApplyRuntimeConsequences);
   socket.register("cleanupRuntimeConsequences", gmCleanupRuntimeConsequences);
   socket.register("applyCardDamage", gmApplyCardDamage);

@@ -596,7 +596,7 @@ async function flushTargetHelperChoiceBucket(key) {
             }))
             buttonsCfg.push({
                action: "cancel",
-               label: "Cancel",
+               label: game.i18n?.localize?.("PF2EATW.IO.Cancel") ?? "Cancel",
                callback: () => resolve(-1),
             })
             DV2.wait({
@@ -617,7 +617,10 @@ async function flushTargetHelperChoiceBucket(key) {
                   callback: () => resolve(i),
                }
             }
-            btnObj.cancel = { label: "Cancel", callback: () => resolve(-1) }
+            btnObj.cancel = {
+               label: game.i18n?.localize?.("PF2EATW.IO.Cancel") ?? "Cancel",
+               callback: () => resolve(-1),
+            }
             new Dialog({
                title,
                content,

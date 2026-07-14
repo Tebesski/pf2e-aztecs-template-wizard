@@ -4,6 +4,7 @@ import {
    REGION_VISIBILITY_OPTIONS,
    REGION_HIGHLIGHT_MODE_OPTIONS,
    defaultAdvanced,
+   defaultWallRestriction,
    defaultTemplateShape,
    defaultShapeVariant,
    TEMPLATE_SHAPE_TYPE_OPTIONS,
@@ -19,6 +20,10 @@ import {
    renderExpirationHeightenList,
    renderHeightenListForAutomation,
 } from "./heightening-renderers.mjs"
+import {
+   canImportTemplateJson,
+   canSaveTemplatesToCompendium,
+} from "../settings/player-template-access.mjs"
 export {
    checkDependency,
    computeExpressionPreview,
@@ -120,16 +125,28 @@ export {
 export function renderTabContent(item, { showItemActions = true } = {}) {
    const automation = readAutomation(item)
    const labelPlaceholder = escapeHTML(item.name ?? "")
-   const isUnlimited = automation.expiration.unit === "unlimited"
-   const units =
-      Object.entries(TIME_UNITS)
-         .map(
-            ([k, v]) =>
-               `<option value="${k}" ${automation.expiration.unit === k ? "selected" : ""}>` +
-               `${localize(v.label)}</option>`,
-         )
-         .join("") +
-      `<option value="unlimited" ${isUnlimited ? "selected" : ""}>${localize("PF2EATW.Unit.Unlimited")}</option>`
+   const units = Object.entries(TIME_UNITS)
+      .filter(([k]) => k !== "seconds")
+      .map(
+         ([k, v]) =>
+            `<option value="${k}" ${automation.expiration.unit === k ? "selected" : ""}>` +
+            `${localize(v.label)}</option>`,
+      )
+      .join("")
+   const sustainLimit = automation.expiration.sustain ?? {
+      amount: 1,
+      unit: "minutes",
+   }
+   const sustainUnits = Object.entries(TIME_UNITS)
+      .filter(([k]) => k !== "seconds")
+      .map(
+         ([k, v]) =>
+            `<option value="${k}" ${sustainLimit.unit === k ? "selected" : ""}>` +
+            `${localize(v.label)}</option>`,
+      )
+      .join("")
+   const durationDisabled =
+      !automation.expiration.enabled || automation.expiration.currentTurnEnd
 
    const catalog = BEHAVIOR_CATALOG.slice()
       .sort((a, b) => localize(a.label).localeCompare(localize(b.label)))
@@ -137,9 +154,11 @@ export function renderTabContent(item, { showItemActions = true } = {}) {
       .join("")
 
    const rows = (automation.behaviors ?? [])
-      .map((entry) => behaviorRowHtml(entry, item))
+      .map((entry, index) => behaviorRowHtml(entry, item, index))
       .join("")
    const placementRangeHtml = renderPlacementRangeRow(automation)
+   const canImportJson = canImportTemplateJson()
+   const canSaveCompendium = canSaveTemplatesToCompendium()
 
    const itemActions = showItemActions
       ? `
@@ -147,14 +166,22 @@ export function renderTabContent(item, { showItemActions = true } = {}) {
         <a data-action="atw-export">
           <i class="fa-solid fa-file-export"></i> ${localize("PF2EATW.IO.Export")}
         </a>
-        <a data-action="atw-import">
+        ${
+           canImportJson
+              ? `<a data-action="atw-import">
           <i class="fa-solid fa-file-import"></i> ${localize("PF2EATW.IO.Import")}
-        </a>
+        </a>`
+              : ""
+        }
       </div>
       <div class="atw-row atw-row-actions">
-        <a data-action="atw-save-to-compendium">
+        ${
+           canSaveCompendium
+              ? `<a data-action="atw-save-to-compendium">
           <i class="fa-solid fa-bookmark"></i> ${localize("PF2EATW.Compendium.Save")}
-        </a>
+        </a>`
+              : ""
+        }
         <a data-action="atw-import-from-compendium">
           <i class="fa-solid fa-book-open"></i> ${localize("PF2EATW.Compendium.ImportFrom")}
         </a>
@@ -182,7 +209,7 @@ export function renderTabContent(item, { showItemActions = true } = {}) {
 
     <fieldset class="atw-section">
       <legend>${localize("PF2EATW.Expiration")}</legend>
-      <div class="atw-row atw-row-toggle">
+      <div class="atw-row atw-row-toggle atw-expiration-head">
         <label class="atw-checkbox-label">
           <input type="checkbox" data-atw-path="expiration.enabled"
                  ${automation.expiration.enabled ? "checked" : ""}>
@@ -191,20 +218,34 @@ export function renderTabContent(item, { showItemActions = true } = {}) {
                data-tooltip="${escapeHTML(localize("PF2EATW.Tooltip.RegionExpiration"))}"></i>
           </span>
         </label>
+        <label class="atw-checkbox-label atw-current-turn-end">
+          <input type="checkbox" data-atw-path="expiration.currentTurnEnd"
+                 ${automation.expiration.currentTurnEnd ? "checked" : ""}
+                 ${automation.expiration.enabled ? "" : "disabled"}>
+          <span>${localize("PF2EATW.CurrentTurnEnd")}</span>
+        </label>
       </div>
-      <div class="atw-row atw-expiration ${automation.expiration.enabled ? "" : "atw-disabled"}">
+      <div class="atw-row atw-expiration ${durationDisabled ? "atw-disabled" : ""}">
         <input type="number" data-atw-path="expiration.amount"
-               min="0" step="1" value="${automation.expiration.amount}"
-               ${isUnlimited ? 'style="display:none"' : ""}>
+               min="1" step="1" value="${automation.expiration.amount}"
+               aria-label="${localize("PF2EATW.ExpirationAmount")}">
         <select data-atw-path="expiration.unit">${units}</select>
       </div>
       ${renderExpirationHeightenList(automation)}
-      <div class="atw-row atw-row-toggle">
+      <div class="atw-row atw-row-toggle atw-sustain-row">
         <label class="atw-checkbox-label">
           <input type="checkbox" data-atw-path="expiration.sustained"
                  ${automation.expiration.sustained ? "checked" : ""}>
-          <span>Sustained</span>
+          <span>${localize("PF2EATW.Sustained")}</span>
         </label>
+        <div class="atw-sustain-controls" ${automation.expiration.sustained ? "" : "hidden"}>
+          <span>${localize("PF2EATW.SustainedUpTo")}</span>
+          <input type="number" data-atw-path="expiration.sustain.amount"
+                 min="1" step="1" value="${sustainLimit.amount}"
+                 aria-label="${localize("PF2EATW.SustainedLimit")}">
+          <select data-atw-path="expiration.sustain.unit"
+                  aria-label="${localize("PF2EATW.SustainedUnit")}">${sustainUnits}</select>
+        </div>
       </div>
     </fieldset>
 
@@ -226,6 +267,9 @@ export function renderTabContent(item, { showItemActions = true } = {}) {
 
 export function renderAdvancedSection(automation) {
    const adv = automation.advanced ?? defaultAdvanced()
+   const wallRestriction = normalizeWallRestrictionForRender(
+      automation.wallRestriction,
+   )
    const contiguous =
       automation.contiguous && typeof automation.contiguous === "object"
          ? automation.contiguous
@@ -287,8 +331,8 @@ export function renderAdvancedSection(automation) {
         </label>
       </div>
       <p class="atw-hint">${localize("PF2EATW.AttachableHint")}</p>
-      <div class="atw-row atw-contiguous-row">
-        <label class="atw-contiguous-toggle">
+      <div class="atw-row atw-row-toggle atw-contiguous-row">
+        <label class="atw-checkbox-label">
           <input type="checkbox" data-atw-path="contiguous.enabled"
                  ${contiguous.enabled ? "checked" : ""}>
           <span>${localize("PF2EATW.Contiguous")}</span>
@@ -299,6 +343,7 @@ export function renderAdvancedSection(automation) {
                ${contiguous.enabled ? "" : "disabled"}>
       </div>
       <p class="atw-hint">${localize("PF2EATW.ContiguousHint")}</p>
+      ${renderWallRestrictionAccordion(wallRestriction)}
       <div class="atw-row atw-row-toggle">
         <label class="atw-checkbox-label">
           <input type="checkbox" data-atw-path="advanced.enabled"
@@ -311,6 +356,76 @@ export function renderAdvancedSection(automation) {
   </div>`
 }
 
+function normalizeWallRestrictionForRender(raw) {
+   const base = defaultWallRestriction()
+   const value = raw && typeof raw === "object" ? raw : {}
+   return {
+      enabled: !!value.enabled,
+      type: ["darkness", "light", "move", "sight", "sound"].includes(value.type)
+         ? value.type
+         : base.type,
+      priority: Math.max(0, Math.floor(Number(value.priority) || 0)),
+   }
+}
+
+function renderWallRestrictionAccordion(wallRestriction) {
+   const typeOptions = [
+      {
+         value: "darkness",
+         label: "PF2EATW.WallRestriction.Type.Darkness",
+      },
+      {
+         value: "light",
+         label: "PF2EATW.WallRestriction.Type.Light",
+      },
+      {
+         value: "move",
+         label: "PF2EATW.WallRestriction.Type.Move",
+      },
+      {
+         value: "sight",
+         label: "PF2EATW.WallRestriction.Type.Sight",
+      },
+      {
+         value: "sound",
+         label: "PF2EATW.WallRestriction.Type.Sound",
+      },
+   ]
+      .map(
+         (option) =>
+            `<option value="${option.value}" ${wallRestriction.type === option.value ? "selected" : ""}>` +
+            `${localize(option.label)}</option>`,
+      )
+      .join("")
+
+   return `<div class="atw-wall-restriction atw-accordion atw-accordion-collapsed">
+      <a class="atw-accordion-header" data-action="toggle-accordion">
+        <i class="fa-solid fa-chevron-down atw-accordion-chevron"></i>
+        <span>${localize("PF2EATW.WallRestriction.Title")}</span>
+      </a>
+      <div class="atw-accordion-body">
+        <div class="atw-row atw-row-toggle">
+          <label class="atw-checkbox-label">
+            <input type="checkbox" data-atw-path="wallRestriction.enabled"
+                   ${wallRestriction.enabled ? "checked" : ""}>
+            <span>${localize("PF2EATW.WallRestriction.Enabled")}</span>
+          </label>
+        </div>
+        <p class="atw-hint">${localize("PF2EATW.WallRestriction.EnabledHint")}</p>
+        <label class="atw-row">
+          <span class="atw-row-label">${localize("PF2EATW.WallRestriction.TypeLabel")}</span>
+          <select data-atw-path="wallRestriction.type">${typeOptions}</select>
+        </label>
+        <label class="atw-row">
+          <span class="atw-row-label">${localize("PF2EATW.WallRestriction.Priority")}</span>
+          <input type="number" min="0" step="1"
+                 data-atw-path="wallRestriction.priority"
+                 value="${wallRestriction.priority}">
+        </label>
+      </div>
+    </div>`
+}
+
 function renderPlacementRangeRow(automation) {
    const placementRange =
       automation.placementRange && typeof automation.placementRange === "object"
@@ -321,11 +436,11 @@ function renderPlacementRangeRow(automation) {
      <label class="atw-contiguous-toggle">
        <input type="checkbox" data-atw-path="placementRange.enabled"
               ${placementRange.enabled ? "checked" : ""}>
-       <span>Max placement range</span>
+       <span>${localize("PF2EATW.PlacementRange.Max")}</span>
      </label>
      <input type="number" min="0" step="5" data-atw-path="placementRange.max"
             data-atw-path-type="number"
-            aria-label="Max placement range"
+            aria-label="${localize("PF2EATW.PlacementRange.Max")}"
             class="atw-placement-range-max" value="${placementRangeMax}"
             ${placementRange.enabled ? "" : "disabled"}>
      <span class="atw-row-unit">ft</span>
@@ -403,15 +518,19 @@ export function templateShapeRowHtml(v, idx, total) {
   </div>`
 }
 
-export function behaviorRowHtml(entry, item = null) {
+export function behaviorRowHtml(entry, item = null, index = 0) {
    const def = BEHAVIOR_CATALOG.find((b) => b.type === entry.type)
    const collapsed = entry.collapsed ? "atw-collapsed" : ""
    const automation = item ? readAutomation(item) : null
+   const tag = behaviorDisplayTag(entry, index)
 
    const headerOf = (label, iconClass) => `
     <header class="atw-behavior-header">
       <i class="${iconClass} atw-behavior-icon"></i>
-      <span class="atw-behavior-name">${label}</span>
+      <span class="atw-behavior-name">
+        <span class="atw-behavior-label">${label}</span>
+        <span class="atw-behavior-tag">${escapeHTML(tag)}</span>
+      </span>
       <input type="checkbox" data-atw-bprop="enabled" ${entry.enabled ? "checked" : ""}>
       <a data-action="remove-behavior">
         <i class="fa-solid fa-trash"></i>
@@ -438,6 +557,12 @@ export function behaviorRowHtml(entry, item = null) {
    const fieldsCollapsed = entry.fieldsCollapsed ? "atw-accordion-collapsed" : ""
    return `<li class="atw-behavior ${collapsed}" data-id="${entry.id}">
     ${headerOf(localize(def.label), def.icon)}
+    <label class="atw-row atw-behavior-tag-row">
+      <span class="atw-row-label">${localize("PF2EATW.BehaviorTag")}</span>
+      <input type="text" data-atw-bprop="tag"
+             value="${escapeHTML(entry.tag ?? "")}"
+             placeholder="${escapeHTML(tag)}">
+    </label>
     <div class="atw-behavior-fields atw-accordion ${fieldsCollapsed}">
       <a class="atw-accordion-header" data-action="toggle-behavior-fields">
         <i class="fa-solid ${entry.fieldsCollapsed ? "fa-chevron-down" : "fa-chevron-up"} atw-accordion-chevron"></i>
@@ -447,6 +572,11 @@ export function behaviorRowHtml(entry, item = null) {
     </div>
     ${renderHeightenListForAutomation(entry, automation)}
   </li>`
+}
+
+function behaviorDisplayTag(entry, index = 0) {
+   const custom = String(entry?.tag ?? "").trim()
+   return custom || `#${index + 1}`
 }
 
 export function fieldHtml(

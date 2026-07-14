@@ -97,15 +97,12 @@ function expirationHeightenRuleHtml(rule, index) {
         {}
       : {}
    const amount = Number.isFinite(Number(action.amount))
-      ? Math.max(0, Number(action.amount))
+      ? Math.max(1, Number(action.amount))
       : 1
-   const unitOptions = [
-      ...["rounds", "minutes", "hours", "days"].map((value) => ({
-         value,
-         label: TIME_UNITS[value]?.label ?? value,
-      })),
-      { value: "unlimited", label: "PF2EATW.Unit.Unlimited" },
-   ]
+   const unitOptions = ["rounds", "minutes", "hours", "days"].map((value) => ({
+      value,
+      label: TIME_UNITS[value]?.label ?? value,
+   }))
    return `<div class="atw-expiration-heighten-rule atw-accordion ${collapsed}" data-expiration-heighten-index="${index}">
       <div class="atw-accordion-header" data-action="toggle-expiration-heighten-rule">
          <i class="fa-solid ${collapsed ? "fa-chevron-down" : "fa-chevron-up"} atw-accordion-chevron"></i>
@@ -127,7 +124,7 @@ function expirationHeightenRuleHtml(rule, index) {
                <strong>Modify time</strong>
             </div>
             <div class="atw-heighten-action-body atw-heighten-expiration-editor">
-               <input type="number" min="0" step="1" class="atw-expiration-heighten-amount" value="${amount}">
+               <input type="number" min="1" step="1" class="atw-expiration-heighten-amount" value="${amount}">
                ${selectValue(unitOptions, action.unit ?? "minutes", "atw-expiration-heighten-unit")}
             </div>
          </div>

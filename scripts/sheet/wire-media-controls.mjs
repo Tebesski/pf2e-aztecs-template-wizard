@@ -174,7 +174,7 @@ export function wireMediaControls($tab, item) {
          globalThis.FilePicker
       if (!FP) {
          ui.notifications?.warn(
-            "FilePicker is not available in this Foundry build.",
+            game.i18n.localize("PF2EATW.Error.FilePickerUnavailable"),
          )
          return
       }

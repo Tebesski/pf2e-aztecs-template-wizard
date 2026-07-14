@@ -6,6 +6,7 @@ import { localize } from "./common/html.mjs"
 import { autoAssignTemplateToItem } from "./compendium/templates-compendium.mjs"
 import { renderTabContent } from "./sheet/renderers.mjs"
 import { wireTab } from "./sheet/wire-tab.mjs"
+import { canEditTemplateAutomation } from "./settings/player-template-access.mjs"
 import { NAV_CLASS, TAB_CLASS, TAB_NAME } from "./sheet/tab-constants.mjs"
 
 export function registerSheetTab() {
@@ -26,12 +27,14 @@ function _asJQuery(html) {
 }
 
 async function _onRender(sheet, html) {
-   if (!game.user?.isGM) return
    const item = sheet.item ?? sheet.document
    if (!item) return
    if (!SUPPORTED_ITEM_TYPES.has(item.type)) return
+   if (!canEditTemplateAutomation(item)) return
    try {
-      await autoAssignTemplateToItem(item, { reason: "item-sheet-render" })
+      if (game.user?.isGM) {
+         await autoAssignTemplateToItem(item, { reason: "item-sheet-render" })
+      }
    } catch (_e) {}
 
    const $html = _asJQuery(html)

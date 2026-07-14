@@ -11,6 +11,8 @@ import { confirmDelete, confirmHtml } from "./confirm-dialogs.mjs"
 import { isTemplateAutomation } from "./templates-automation.mjs"
 import { TemplateEntryEditorApp } from "./template-entry-editor.mjs"
 import { normalizeAutomation } from "../sheet/automation-storage.mjs"
+import { canSaveTemplatesToCompendium } from "../settings/player-template-access.mjs"
+import { executeAsGM } from "../runtime/socketlib.mjs"
 import {
    normalizeEntrySlug,
    sanitizeTemplateEntry,
@@ -76,7 +78,7 @@ export async function promptForCompendiumImport() {
       )
       .map((row) => {
          const entry = row.entry
-         const label = `${entry.name ?? "Untitled"}${entry.slug ? ` (${entry.slug})` : ""}`
+         const label = `${entry.name ?? localize("PF2EATW.Compendium.Untitled")}${entry.slug ? ` (${entry.slug})` : ""}`
          return { id: row.id, label }
       })
    const content = await renderModuleTemplate("dialogs/compendium-import.hbs", {
@@ -84,7 +86,6 @@ export async function promptForCompendiumImport() {
       templateLabel: localize("PF2EATW.Compendium.TemplateLabel"),
       replaceLabel: localize("PF2EATW.Compendium.ImportModeReplace"),
       appendLabel: localize("PF2EATW.Compendium.ImportModeAppend"),
-      hint: localize("PF2EATW.Compendium.ImportModeHint"),
    })
 
    const readResult = (root) => {
@@ -101,6 +102,7 @@ export async function promptForCompendiumImport() {
       return await new Promise((resolve) => {
          DV2.wait({
             window: { title },
+            position: { width: 380 },
             content,
             buttons: [
                {
@@ -111,7 +113,7 @@ export async function promptForCompendiumImport() {
                },
                {
                   action: "cancel",
-                  label: "Cancel",
+                  label: localize("PF2EATW.IO.Cancel"),
                   callback: () => resolve(null),
                },
             ],
@@ -133,41 +135,105 @@ export async function promptForCompendiumImport() {
                   resolve(readResult(html[0]))
                },
             },
-            cancel: { label: "Cancel", callback: () => resolve(null) },
+            cancel: {
+               label: localize("PF2EATW.IO.Cancel"),
+               callback: () => resolve(null),
+            },
          },
          default: "import",
          close: () => resolve(null),
-      }).render(true)
+      }, { width: 380 }).render(true)
    })
 }
 
 export async function saveAutomationToCompendium(item, automation, info) {
    const slug = info?.slug ?? ""
-   const name = info?.name || item?.name || "Untitled"
-   const entries = getTemplatesCompendium()
+   const name = info?.name || item?.name || localize("PF2EATW.Compendium.Untitled")
    const cleanAutomation = normalizeAutomation(automation, item)
+
+   if (!game.user?.isGM) {
+      let overwriteSlug = false
+      if (slug) {
+         const entries = getTemplatesCompendium()
+         const existingIdx = entries.findIndex((e) => e.slug === slug)
+         if (existingIdx >= 0) {
+            overwriteSlug = await confirmHtml(
+               localize("PF2EATW.Compendium.SlugConflictTitle"),
+               `<p>${escapeHTML(localize("PF2EATW.Compendium.SlugConflict").replace("{slug}", slug))}</p>`,
+               false,
+            )
+            if (!overwriteSlug) return false
+         }
+      }
+      const result = await executeAsGM("saveAutomationToCompendium", {
+         userId: game.user.id,
+         slug,
+         name,
+         automation: cleanAutomation,
+         overwriteSlug,
+      })
+      return !!result?.ok
+   }
+
+   return saveAutomationRecord({
+      slug,
+      name,
+      automation: cleanAutomation,
+      confirmSlugConflict: true,
+   })
+}
+
+export async function gmSaveAutomationToCompendium(payload = {}) {
+   if (!game.user?.isGM) return { ok: false, reason: "not-gm" }
+   const requester = payload.userId ? game.users?.get?.(payload.userId) : null
+   if (!canSaveTemplatesToCompendium(requester)) {
+      return { ok: false, reason: "not-allowed" }
+   }
+   const cleanAutomation = normalizeAutomation(payload.automation ?? null)
+   const ok = await saveAutomationRecord({
+      slug: normalizeEntrySlug(payload.slug),
+      name: String(payload.name || localize("PF2EATW.Compendium.Untitled")),
+      automation: cleanAutomation,
+      overwriteSlug: !!payload.overwriteSlug,
+      confirmSlugConflict: false,
+   })
+   return ok ? { ok: true } : { ok: false, reason: "save-failed" }
+}
+
+async function saveAutomationRecord({
+   slug = "",
+   name = localize("PF2EATW.Compendium.Untitled"),
+   automation,
+   overwriteSlug = false,
+   confirmSlugConflict = true,
+} = {}) {
+   const entries = getTemplatesCompendium()
 
    if (slug) {
       const existingIdx = entries.findIndex((e) => e.slug === slug)
       if (existingIdx >= 0) {
-         const overwrite = await confirmHtml(
-            localize("PF2EATW.Compendium.SlugConflictTitle"),
-            `<p>${escapeHTML(localize("PF2EATW.Compendium.SlugConflict").replace("{slug}", slug))}</p>`,
-            false,
-         )
+         const overwrite =
+            overwriteSlug ||
+            (confirmSlugConflict
+               ? await confirmHtml(
+                    localize("PF2EATW.Compendium.SlugConflictTitle"),
+                    `<p>${escapeHTML(localize("PF2EATW.Compendium.SlugConflict").replace("{slug}", slug))}</p>`,
+                    false,
+                 )
+               : false)
          if (!overwrite) return false
          entries[existingIdx] = {
             id: entries[existingIdx].id ?? foundry.utils.randomID(),
             slug,
             name,
-            automation: foundry.utils.deepClone(cleanAutomation),
+            automation: foundry.utils.deepClone(automation),
          }
       } else {
          entries.push({
             id: foundry.utils.randomID(),
             slug,
             name,
-            automation: foundry.utils.deepClone(cleanAutomation),
+            automation: foundry.utils.deepClone(automation),
          })
       }
    } else {
@@ -175,7 +241,7 @@ export async function saveAutomationToCompendium(item, automation, info) {
          id: foundry.utils.randomID(),
          slug: "",
          name,
-         automation: foundry.utils.deepClone(cleanAutomation),
+         automation: foundry.utils.deepClone(automation),
       })
    }
    await setTemplatesCompendium(entries)
@@ -215,7 +281,7 @@ export class TemplatesCompendiumApp extends (foundry.applications?.api
          })),
          newBlankLabel: localize("PF2EATW.Compendium.NewBlank"),
          bulkExportLabel: localize("PF2EATW.Compendium.BulkExport"),
-         bulkImportLabel: "Import",
+         bulkImportLabel: localize("PF2EATW.IO.Import"),
          nameLabel: localize("PF2EATW.Compendium.NameLabel"),
          slugLabel: localize("PF2EATW.Compendium.SlugLabel"),
          behaviorCountLabel: localize("PF2EATW.Compendium.BehaviorCount"),
@@ -284,7 +350,7 @@ export class TemplatesCompendiumApp extends (foundry.applications?.api
       if (fn) fn(json, "application/json", filename)
       else {
          await navigator.clipboard?.writeText(json)
-         ui.notifications?.info("Copied to clipboard.")
+         ui.notifications?.info(localize("PF2EATW.IO.CopiedToClipboard"))
       }
    }
 
@@ -297,7 +363,7 @@ export class TemplatesCompendiumApp extends (foundry.applications?.api
       if (fn) fn(json, "application/json", "atw-templates-compendium.json")
       else {
          await navigator.clipboard?.writeText(json)
-         ui.notifications?.info("Copied to clipboard.")
+         ui.notifications?.info(localize("PF2EATW.IO.CopiedToClipboard"))
       }
    }
 
@@ -308,12 +374,12 @@ export class TemplatesCompendiumApp extends (foundry.applications?.api
       try {
          parsed = JSON.parse(json)
       } catch (_e) {
-         ui.notifications?.error("Invalid JSON.")
+         ui.notifications?.error(localize("PF2EATW.IO.InvalidJson"))
          return
       }
       const sanitized = importedTemplateEntries(parsed)
       if (sanitized.length === 0) {
-         ui.notifications?.error("Expected template entries.")
+         ui.notifications?.error(localize("PF2EATW.Compendium.ExpectedEntries"))
          return
       }
       const current = getTemplatesCompendium()
@@ -321,7 +387,7 @@ export class TemplatesCompendiumApp extends (foundry.applications?.api
       let replaceCollisions = false
       if (collisions.length > 0) {
          replaceCollisions = await confirmHtml(
-            "Replace matching templates?",
+            localize("PF2EATW.Compendium.ReplaceMatchingTitle"),
             collisionPromptHtml(collisions),
             false,
          )
@@ -332,11 +398,7 @@ export class TemplatesCompendiumApp extends (foundry.applications?.api
          replaceCollisions,
       )
       await setTemplatesCompendium(result.entries)
-      ui.notifications?.info(
-         `Imported ${result.added + result.replaced} template${result.added + result.replaced === 1 ? "" : "s"}.` +
-            (result.replaced ? ` Replaced ${result.replaced}.` : "") +
-            (result.skipped ? ` Skipped ${result.skipped}.` : ""),
-      )
+      ui.notifications?.info(importSummaryText(result))
       this.render({ force: true })
    }
 
@@ -369,7 +431,7 @@ function importedTemplateEntries(parsed) {
          sanitizeTemplateEntry({
             id: entry.id ?? foundry.utils.randomID(),
             slug: normalizeEntrySlug(entry.slug),
-            name: String(entry.name ?? "Untitled"),
+            name: String(entry.name ?? localize("PF2EATW.Compendium.Untitled")),
             automation: entry.automation,
          }),
       )
@@ -397,12 +459,47 @@ function collisionPromptHtml(collisions) {
       .join("")
    const more =
       collisions.length > shown.length
-         ? `<p>${collisions.length - shown.length} more matching template${collisions.length - shown.length === 1 ? "" : "s"} will use the same choice.</p>`
+         ? `<p>${escapeHTML(
+              localize("PF2EATW.Compendium.ReplaceMatchingMore").replace(
+                 "{count}",
+                 String(collisions.length - shown.length),
+              ),
+           )}</p>`
          : ""
-   return `<p>The imported file contains ${collisions.length} template${collisions.length === 1 ? "" : "s"} with slug${collisions.length === 1 ? "" : "s"} already in this compendium.</p>
-      <p>Replace existing templates with the imported versions? Choosing No keeps the existing templates and skips the matching imported ones.</p>
+   return `<p>${escapeHTML(
+      localize("PF2EATW.Compendium.ReplaceMatchingPrompt").replace(
+         "{count}",
+         String(collisions.length),
+      ),
+   )}</p>
+      <p>${escapeHTML(localize("PF2EATW.Compendium.ReplaceMatchingChoice"))}</p>
       <ul>${rows}</ul>
       ${more}`
+}
+
+function importSummaryText(result) {
+   const total = result.added + result.replaced
+   let message = localize("PF2EATW.Compendium.ImportSummary").replace(
+      "{count}",
+      String(total),
+   )
+   if (result.replaced) {
+      message +=
+         " " +
+         localize("PF2EATW.Compendium.ImportSummaryReplaced").replace(
+            "{count}",
+            String(result.replaced),
+         )
+   }
+   if (result.skipped) {
+      message +=
+         " " +
+         localize("PF2EATW.Compendium.ImportSummarySkipped").replace(
+            "{count}",
+            String(result.skipped),
+         )
+   }
+   return message
 }
 
 function mergeImportedTemplateEntries(existingEntries, importedEntries, replaceCollisions) {

@@ -1418,15 +1418,21 @@ function applyRuleElementHeightening(entry, field, action) {
 
 function applyExpirationHeightening(automation, action) {
    automation.expiration ??= { enabled: true, amount: 1, unit: "minutes" }
-   const unit = ["rounds", "minutes", "hours", "days", "unlimited"].includes(
-      action.unit,
-   )
+   if (action.unit === "unlimited") {
+      automation.expiration.enabled = false
+      automation.expiration.unit = "minutes"
+      automation.expiration.amount = 1
+      return
+   }
+   const unit = ["rounds", "minutes", "hours", "days"].includes(action.unit)
       ? action.unit
       : "minutes"
    automation.expiration.enabled = true
    automation.expiration.unit = unit
-   automation.expiration.amount =
-      unit === "unlimited" ? 0 : Math.max(0, Number(action.amount) || 0)
+   automation.expiration.amount = Math.max(
+      1,
+      Math.floor(Number(action.amount) || 1),
+   )
 }
 
 function applyTagValueHeightening(entry, field, action) {

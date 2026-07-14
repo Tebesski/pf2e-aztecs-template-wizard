@@ -8,20 +8,39 @@ import { spawnConstructActorsForWalls } from "./region-handler.mjs";
 
 export async function openDestroyableWallBuilder({ walls = null } = {}) {
   if (!game.user?.isGM) {
-    ui.notifications?.warn("Only a GM can create destroyable wall actors.");
+    ui.notifications?.warn(localize("PF2EATW.WallBuilder.GmOnly"));
     return [];
   }
 
   const wallDocs = resolveWallDocuments(walls);
   if (wallDocs.length === 0) {
-    ui.notifications?.warn("Select at least one wall on the Walls layer.");
+    ui.notifications?.warn(localize("PF2EATW.WallBuilder.SelectWall"));
     return [];
   }
 
   const content = await renderModuleTemplate("dialogs/destroyable-wall-builder.hbs", {
     wallCount: wallDocs.length,
     damageTypes: localizedDamageTypes(),
-    damageRowHtml: renderDamageRow()
+    damageRowHtml: renderDamageRow(),
+    titleLabel: localize("PF2EATW.WallBuilder.WallActors"),
+    nameLabel: localize("PF2EATW.WallBuilder.Name"),
+    hpLabel: localize("PF2EATW.WallBuilder.HP"),
+    acLabel: localize("PF2EATW.WallBuilder.AC"),
+    hardnessLabel: localize("PF2EATW.WallBuilder.Hardness"),
+    selectedWallsLabel: localize("PF2EATW.WallBuilder.SelectedWalls"),
+    immunitiesLabel: localize("PF2EATW.WallBuilder.Immunities"),
+    resistancesLabel: localize("PF2EATW.WallBuilder.Resistances"),
+    weaknessesLabel: localize("PF2EATW.WallBuilder.Weaknesses"),
+    addStrikeLabel: localize("PF2EATW.WallBuilder.AddStrike"),
+    strikeNameLabel: localize("PF2EATW.WallBuilder.StrikeName"),
+    attackModifierLabel: localize("PF2EATW.WallBuilder.AttackModifier"),
+    countLabel: localize("PF2EATW.WallBuilder.Count"),
+    dieLabel: localize("PF2EATW.WallBuilder.Die"),
+    typeLabel: localize("PF2EATW.WallBuilder.Type"),
+    categoryLabel: localize("PF2EATW.WallBuilder.Category"),
+    addDamageLabel: localize("PF2EATW.WallBuilder.AddDamage"),
+    wallName: localize("PF2EATW.WallBuilder.DefaultWallName"),
+    strikeName: localize("PF2EATW.WallBuilder.DefaultStrikeName")
   });
 
   const config = await promptWallBuilderConfig(content);
@@ -30,10 +49,10 @@ export async function openDestroyableWallBuilder({ walls = null } = {}) {
   const created = await spawnConstructActorsForWalls(wallDocs, config);
   if (created.length > 0) {
     ui.notifications?.info(
-      `Spawned ${created.length} destroyable wall actor${created.length === 1 ? "" : "s"}.`
+      localize("PF2EATW.WallBuilder.Spawned").replace("{count}", String(created.length))
     );
   } else {
-    ui.notifications?.warn("No destroyable wall actors were created.");
+    ui.notifications?.warn(localize("PF2EATW.WallBuilder.NoneCreated"));
   }
   return created;
 }
@@ -50,7 +69,7 @@ function resolveWallDocuments(walls) {
 }
 
 async function promptWallBuilderConfig(content) {
-  const title = "Build Destroyable Wall Actors";
+  const title = localize("PF2EATW.WallBuilder.DialogTitle");
   const readConfig = (root) => readWallBuilderConfig(root);
   const DV2 = foundry?.applications?.api?.DialogV2;
   if (DV2?.wait) {
@@ -61,11 +80,11 @@ async function promptWallBuilderConfig(content) {
         buttons: [
           {
             action: "spawn",
-            label: "Spawn",
+            label: localize("PF2EATW.WallBuilder.Spawn"),
             default: true,
             callback: (_event, _button, dialog) => resolve(readConfig(dialog.element))
           },
-          { action: "cancel", label: "Cancel", callback: () => resolve(null) }
+          { action: "cancel", label: localize("PF2EATW.IO.Cancel"), callback: () => resolve(null) }
         ],
         rejectClose: false,
         modal: true,
@@ -81,10 +100,10 @@ async function promptWallBuilderConfig(content) {
       content,
       buttons: {
         spawn: {
-          label: "Spawn",
+          label: localize("PF2EATW.WallBuilder.Spawn"),
           callback: (html) => resolve(readConfig(html?.[0] ?? html))
         },
-        cancel: { label: "Cancel", callback: () => resolve(null) }
+        cancel: { label: localize("PF2EATW.IO.Cancel"), callback: () => resolve(null) }
       },
       default: "spawn",
       render: (html) => bindDestroyableWallBuilder(html?.[0] ?? html),
@@ -102,19 +121,19 @@ function findWallBuilderForm(root) {
 function readWallBuilderConfig(root) {
   const form = findWallBuilderForm(root);
   if (!form) {
-    ui.notifications?.error("Destroyable wall builder form could not be read.");
+    ui.notifications?.error(localize("PF2EATW.WallBuilder.FormReadFailed"));
     return null;
   }
 
   const hasStrike = !!form.querySelector("[name='hasStrike']")?.checked;
   const damages = hasStrike ? readDamageRows(form) : [];
   if (hasStrike && damages.length === 0) {
-    ui.notifications?.warn("Add at least one damage row for the Strike.");
+    ui.notifications?.warn(localize("PF2EATW.WallBuilder.AddDamageRequired"));
     return null;
   }
 
   return {
-    name: valueOf(form, "name") || "Wall",
+    name: valueOf(form, "name") || localize("PF2EATW.WallBuilder.DefaultWallName"),
     hp: numberOf(form, "hp", 30, 1),
     ac: numberOf(form, "ac", 15, 1),
     hardness: numberOf(form, "hardness", 5, 0),
@@ -123,7 +142,7 @@ function readWallBuilderConfig(root) {
     weaknesses: readJsonValue(form, "weaknesses", []),
     strike: hasStrike
       ? {
-          name: valueOf(form, "strikeName") || "Slam",
+          name: valueOf(form, "strikeName") || localize("PF2EATW.WallBuilder.DefaultStrikeName"),
           attack: valueOf(form, "strikeAttack") || "10",
           damages
         }
@@ -256,7 +275,7 @@ function renderSectionBadges(section, entries = readSectionEntries(section)) {
     return `<span class="atw-wall-builder-badge" data-index="${index}">
       <span class="atw-wall-builder-badge-type">${escapeHTML(labelForDamageType(section, type))}</span>
       ${value}
-      <a class="atw-tag-remove" data-action="atw-wall-remove-tag" aria-label="Remove">&times;</a>
+      <a class="atw-tag-remove" data-action="atw-wall-remove-tag" aria-label="${escapeHTML(localize("PF2EATW.WallBuilder.Remove"))}">&times;</a>
     </span>`;
   }).join("");
 }
@@ -315,7 +334,8 @@ function renderDamageRow(value = {}) {
     <select class="atw-wall-builder-damage-die">${optionHtml(localizedOptions(DAMAGE_DIE_OPTIONS), damage.dieSize)}</select>
     <select class="atw-wall-builder-damage-type">${optionHtml(localizedDamageTypes(), damage.damageType)}</select>
     <select class="atw-wall-builder-damage-category">${optionHtml(localizedOptions(DAMAGE_CATEGORY_OPTIONS), damage.category)}</select>
-    <button type="button" class="atw-wall-builder-icon-button" data-action="atw-wall-remove-damage-row">
+    <button type="button" class="atw-wall-builder-icon-button" data-action="atw-wall-remove-damage-row"
+            data-tooltip="${escapeHTML(localize("PF2EATW.WallBuilder.RemoveDamage"))}">
       <i class="fa-solid fa-trash"></i>
     </button>
   </div>`;

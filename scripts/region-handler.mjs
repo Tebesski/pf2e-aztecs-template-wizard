@@ -203,7 +203,8 @@ async function applyAutomationToRegion(region, item, automation, options = {}) {
    if (!region?.parent) return
    if (region.getFlag(FLAG_SCOPE, "managed")) return
    automation = resolveAutomationHeightening(automation, item, { region })
-   const deleteAfterPlacement = !automation.expiration?.enabled
+
+   await applyWallRestriction(region, automation.wallRestriction)
 
    const behaviorData = buildBehaviorDataList(
       automation.behaviors,
@@ -224,11 +225,15 @@ async function applyAutomationToRegion(region, item, automation, options = {}) {
       }
    }
 
+   const expiration = automation.expiration ?? {}
+   const combatExpiration = buildCombatExpirationSchedule(expiration)
    const expSeconds =
-      automation.expiration?.enabled &&
-      automation.expiration?.unit !== "unlimited"
-         ? expirationToSeconds(automation.expiration)
+      expiration.enabled && !combatExpiration
+         ? expirationToSeconds(expiration)
          : null
+   const durationRounds = expiration.enabled
+      ? expirationToRounds(expiration)
+      : null
 
    const trackerName = automation.label?.trim() || item.name
 
@@ -239,19 +244,29 @@ async function applyAutomationToRegion(region, item, automation, options = {}) {
       ownerUserId: options.ownerUserId ?? null,
       automationId: automation.id ?? null,
       placedAt: game.time.worldTime,
-      expiresAt: expSeconds !== null ? game.time.worldTime + expSeconds : null,
+      durationSeconds: expiration.enabled ? expirationToSeconds(expiration) : null,
+      durationRounds,
+      remainingRounds: combatExpiration?.remainingRounds ?? durationRounds,
+      totalRounds: combatExpiration?.totalRounds ?? durationRounds,
+      expiresAt:
+         expSeconds !== null && !combatExpiration
+            ? game.time.worldTime + expSeconds
+            : null,
+      combatExpiration,
       resolvedAutomation: foundry.utils.deepClone(automation),
    })
 
-   if (expSeconds !== null) {
-      trackRegion({
-         regionUuid: region.uuid,
-         itemName: trackerName,
-         durationSeconds: expSeconds,
-         placedAt: game.time.worldTime,
-         sceneId: region.parent?.id ?? null,
-      })
-   }
+   trackRegion({
+      regionUuid: region.uuid,
+      itemName: trackerName,
+      durationSeconds: expSeconds,
+      durationRounds,
+      remainingRounds: combatExpiration?.remainingRounds ?? durationRounds,
+      totalRounds: combatExpiration?.totalRounds ?? durationRounds,
+      sustained: !!expiration.sustained,
+      placedAt: game.time.worldTime,
+      sceneId: region.parent?.id ?? null,
+   })
 
    const tileEntries = (automation.behaviors ?? []).filter(
       (b) =>
@@ -311,7 +326,7 @@ async function applyAutomationToRegion(region, item, automation, options = {}) {
 
    try {
       await applyEnterEventsForTokensInsideRegion(region, {
-         includeTokenEnter: deleteAfterPlacement,
+         includeTokenEnter: false,
       })
    } catch (e) {
       undefined
@@ -359,9 +374,105 @@ async function applyAutomationToRegion(region, item, automation, options = {}) {
       }
    }
 
-   if (deleteAfterPlacement) {
-      await quietlyDeleteRegion(region)
+}
+
+function buildCombatExpirationSchedule(expiration) {
+   if (!expiration?.enabled) return null
+   const combat = game.combat
+   if (!combat || combat.started === false) return null
+   const turn = Number(combat.turn)
+   const round = Number(combat.round)
+   if (!Number.isFinite(turn) || !Number.isFinite(round)) return null
+   const currentTurnEnd = !!expiration.currentTurnEnd
+   const totalRounds = currentTurnEnd ? 1 : expirationToRounds(expiration)
+   return {
+      combatId: combat.id ?? null,
+      combatantId: combat.combatant?.id ?? null,
+      turn,
+      round: currentTurnEnd ? round : round + totalRounds,
+      expiry: currentTurnEnd ? "turn-end" : "turn-start",
+      mode: currentTurnEnd
+         ? "current-turn-end"
+         : expiration.sustained
+           ? "sustained"
+           : "duration",
+      sustained: !!expiration.sustained,
+      remainingRounds: totalRounds,
+      totalRounds,
    }
+}
+
+async function applyWallRestriction(region, config) {
+   const restriction = normalizeWallRestriction(config)
+   const update = { restriction }
+   const repairedLevels = wallRestrictionLevelsForUpdate(region, restriction)
+   if (repairedLevels) update.levels = repairedLevels
+   try {
+      await region.update(update, { render: false })
+   } catch (e) {
+      if (repairedLevels) {
+         try {
+            await region.update({ levels: repairedLevels }, { render: false })
+         } catch (e2) {
+            undefined
+         }
+      }
+      for (const [key, value] of Object.entries(restriction)) {
+         try {
+            await region.update(
+               { [`restriction.${key}`]: value },
+               { render: false },
+            )
+         } catch (e2) {
+            undefined
+         }
+      }
+   }
+}
+
+function normalizeWallRestriction(config) {
+   const value = config && typeof config === "object" ? config : {}
+   return {
+      enabled: !!value.enabled,
+      type: ["darkness", "light", "move", "sight", "sound"].includes(value.type)
+         ? value.type
+         : "move",
+      priority: Math.max(0, Math.floor(Number(value.priority) || 0)),
+   }
+}
+
+function wallRestrictionLevelsForUpdate(region, restriction) {
+   if (!restriction.enabled) return null
+   const current = levelIdsFromValue(region?._source?.levels ?? region?.levels)
+   if (current.length === 1) return null
+   const canvasLevelId = canvas?.level?.id
+   if (canvasLevelId) return [canvasLevelId]
+   const sceneLevels = collectionValues(region?.parent?.levels).filter(
+      (level) => level?.id && level.visible !== false,
+   )
+   if (sceneLevels.length === 1) return [sceneLevels[0].id]
+   return null
+}
+
+function levelIdsFromValue(value) {
+   if (!value) return []
+   if (Array.isArray(value)) return value.map(String).filter(Boolean)
+   if (value instanceof Set) return Array.from(value).map(String).filter(Boolean)
+   if (typeof value.values === "function") {
+      return Array.from(value.values()).map(String).filter(Boolean)
+   }
+   return []
+}
+
+function collectionValues(collection) {
+   if (!collection) return []
+   if (Array.isArray(collection)) return collection.filter(Boolean)
+   if (Array.isArray(collection.contents)) return collection.contents.filter(Boolean)
+   if (typeof collection.values === "function")
+      return Array.from(collection.values()).filter(Boolean)
+   if (typeof collection[Symbol.iterator] === "function")
+      return Array.from(collection).filter(Boolean)
+   return Object.values(collection).filter(Boolean)
 }
 
 async function applyEnterEventsForTokensInsideRegion(
@@ -463,7 +574,7 @@ function onPreDeleteRegion(region, options, userId) {
    if (!region?.getFlag?.(FLAG_SCOPE, "managed")) return
    if (isRegionDeleting(region.uuid)) return
    ui.notifications?.warn(
-      "Only the GM can delete Template Wizard managed templates.",
+      game.i18n.localize("PF2EATW.Error.GmDeleteManagedTemplate"),
    )
    return false
 }
@@ -588,6 +699,7 @@ async function resolveOriginItem(region) {
 
 async function quietlyDeleteRegion(region) {
    if (!region) return
+   if (isRegionDeleting(region.uuid) || !regionStillExists(region)) return
    markRegionDeleting(region.uuid)
    try {
       const ourIds =
@@ -596,18 +708,29 @@ async function quietlyDeleteRegion(region) {
             .map((b) => b.id) ?? []
       if (ourIds.length) {
          const updates = ourIds.map((id) => ({ _id: id, disabled: true }))
-         await region.updateEmbeddedDocuments("RegionBehavior", updates, {
-            render: false,
-         })
+         if (regionStillExists(region)) {
+            await region.updateEmbeddedDocuments("RegionBehavior", updates, {
+               render: false,
+            })
+         }
       }
    } catch (e) {
       undefined
    }
    try {
-      await region.delete()
+      if (regionStillExists(region)) await region.delete()
    } catch (e) {
       undefined
    }
+}
+
+function regionStillExists(region) {
+   if (!region?.id || !region.parent) return false
+   const live = region.parent.regions?.get?.(region.id)
+   if (live) return true
+   return Array.from(region.parent.regions ?? []).some(
+      (candidate) => candidate?.id === region.id,
+   )
 }
 
 export async function gmDeleteManagedRegion(regionUuid) {
@@ -623,9 +746,33 @@ export async function deleteManagedRegion(regionUuid) {
 }
 
 export function expirationToSeconds(expiration) {
-   const def = TIME_UNITS[expiration.unit]
-   if (!def) return Number(expiration.amount) || 0
-   return Math.max(0, Number(expiration.amount) || 0) * def.toSeconds
+   if (!expiration?.enabled) return 0
+   if (expiration.currentTurnEnd) return 6
+   const source =
+      expiration.sustained && expiration.sustain
+         ? expiration.sustain
+         : expiration
+   return durationToSeconds(source)
+}
+
+function durationToSeconds(duration) {
+   const def = TIME_UNITS[duration?.unit]
+   if (!def) return Math.max(1, Number(duration?.amount) || 1) * 6
+   return Math.max(1, Number(duration?.amount) || 1) * def.toSeconds
+}
+
+function expirationToRounds(expiration) {
+   if (!expiration?.enabled) return null
+   if (expiration.currentTurnEnd) return 1
+   const source =
+      expiration.sustained && expiration.sustain
+         ? expiration.sustain
+         : expiration
+   return durationToRounds(source)
+}
+
+function durationToRounds(duration) {
+   return Math.max(1, Math.ceil(durationToSeconds(duration) / 6))
 }
 
 export function registerExpirationSweep() {
@@ -637,9 +784,114 @@ export function registerExpirationSweep() {
       for (const region of regions) {
          const flag = region.getFlag(FLAG_SCOPE, "managed")
          if (!flag?.expiresAt) continue
+         if (flag.combatExpiration) continue
          if (now >= flag.expiresAt) {
             await quietlyDeleteRegion(region)
          }
       }
    })
+   Hooks.on("pf2e.startTurn", async (combatant, encounter) => {
+      if (!isCurrentUserActiveGM()) return
+      await sweepCombatExpirations(
+         encounter ?? combatant?.parent,
+         combatant,
+         "turn-start",
+      )
+   })
+   Hooks.on("pf2e.endTurn", async (combatant, encounter) => {
+      if (!isCurrentUserActiveGM()) return
+      await sweepCombatExpirations(
+         encounter ?? combatant?.parent,
+         combatant,
+         "turn-end",
+      )
+   })
+}
+
+async function sweepCombatExpirations(
+   encounter = game.combat,
+   combatant = null,
+   phase = "turn-end",
+) {
+   const scene = encounter?.scene ?? canvas?.scene
+   if (!scene?.regions) return
+   for (const region of Array.from(scene.regions)) {
+      if (!regionStillExists(region)) continue
+      const flag = region.getFlag(FLAG_SCOPE, "managed")
+      const schedule = flag?.combatExpiration
+      const action = combatExpirationAction(schedule, encounter, combatant, phase)
+      if (action.type === "delete") {
+         await quietlyDeleteRegion(region)
+      } else if (action.type === "decrement") {
+         await updateCombatExpirationRounds(region, action.remainingRounds)
+      }
+   }
+}
+
+function combatExpirationAction(schedule, encounter, combatant, phase) {
+   if (!schedule) return { type: "none" }
+   if (schedule.combatId && encounter?.id && schedule.combatId !== encounter.id) {
+      return { type: "none" }
+   }
+   const currentRound = Number(encounter?.round ?? game.combat?.round ?? 0)
+   const currentTurn = Number(encounter?.turn ?? game.combat?.turn ?? 0)
+   const dueRound = Number(schedule.round)
+   const dueTurn = Number(schedule.turn)
+   if (!Number.isFinite(currentRound) || !Number.isFinite(dueRound)) {
+      return { type: "none" }
+   }
+
+   if (isMissedCombatExpiration(currentRound, currentTurn, dueRound, dueTurn)) {
+      return { type: "delete" }
+   }
+
+   if ((schedule.expiry ?? "turn-start") !== phase) {
+      return { type: "none" }
+   }
+
+   const matchingCombatant =
+      schedule.combatantId && combatant?.id === schedule.combatantId
+   const matchingTurn =
+      !schedule.combatantId &&
+      Number.isFinite(currentTurn) &&
+      Number.isFinite(dueTurn) &&
+      currentTurn === dueTurn
+
+   if (schedule.mode === "current-turn-end") {
+      return matchingCombatant || matchingTurn
+         ? { type: "delete" }
+         : { type: "none" }
+   }
+
+   if (!matchingCombatant && !matchingTurn) {
+      return { type: "none" }
+   }
+
+   const remainingRounds = Math.max(
+      0,
+      Math.floor(Number(schedule.remainingRounds ?? schedule.totalRounds) || 0) -
+         1,
+   )
+   return remainingRounds <= 0
+      ? { type: "delete" }
+      : { type: "decrement", remainingRounds }
+}
+
+function isMissedCombatExpiration(currentRound, currentTurn, dueRound, dueTurn) {
+   if (currentRound > dueRound) return true
+   if (currentRound < dueRound) return false
+   if (!Number.isFinite(currentTurn) || !Number.isFinite(dueTurn)) return false
+   return currentTurn > dueTurn
+}
+
+async function updateCombatExpirationRounds(region, remainingRounds) {
+   if (!regionStillExists(region)) return
+   await region.update(
+      {
+         [`flags.${FLAG_SCOPE}.managed.remainingRounds`]: remainingRounds,
+         [`flags.${FLAG_SCOPE}.managed.combatExpiration.remainingRounds`]:
+            remainingRounds,
+      },
+      { render: false },
+   )
 }

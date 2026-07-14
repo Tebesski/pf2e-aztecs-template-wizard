@@ -5,6 +5,7 @@ import {
    shapeDataFromVariant,
    shapeLabel,
    shapeSizeLabel,
+   currentCanvasLevelIds,
    variantsForAutomation,
 } from "./compendium/template-placement.mjs"
 
@@ -209,7 +210,9 @@ async function onPlaceTemplateButton(event) {
 
 function placeItemTemplateVariant(item, variantIndex, castInfo = null) {
    if (!canvas?.ready || !canvas.regions?.placeRegion) {
-      ui.notifications?.warn("Open a scene before placing a template.")
+      ui.notifications?.warn(
+         game.i18n.localize("PF2EATW.TemplatePlacement.OpenScene"),
+      )
       return false
    }
    const automation = resolvedAutomationForCard(item, castInfo)
@@ -218,7 +221,7 @@ function placeItemTemplateVariant(item, variantIndex, castInfo = null) {
    const shape = shapeDataFromVariant(variant)
    if (!shape) return false
    const areaShape = variant?.type === "circle" ? "burst" : variant?.type
-   canvas.regions.placeRegion({
+   const placementData = {
       name: item.name || "Template",
       shapes: [shape],
       color: game.user.color?.toString?.() ?? "#a728cc",
@@ -236,7 +239,10 @@ function placeItemTemplateVariant(item, variantIndex, castInfo = null) {
             origin: { uuid: item.uuid },
          },
       },
-   })
+   }
+   const levels = currentCanvasLevelIds()
+   if (levels) placementData.levels = levels
+   canvas.regions.placeRegion(placementData)
    return true
 }
 

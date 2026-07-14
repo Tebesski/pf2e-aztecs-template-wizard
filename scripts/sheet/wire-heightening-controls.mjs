@@ -356,7 +356,9 @@ export function wireHeighteningControls($tab, $html, item, sheet, refreshPanel) 
             foundry.applications?.apps?.FilePicker ??
             globalThis.FilePicker
          if (!FP || !input) {
-            ui.notifications?.warn("FilePicker is not available in this Foundry build.")
+            ui.notifications?.warn(
+               game.i18n.localize("PF2EATW.Error.FilePickerUnavailable"),
+            )
             return
          }
          try {
@@ -576,8 +578,11 @@ function readExpirationHeightenRule(ruleEl, rule) {
    }
    action.type = "setExpiration"
    action.amount = Math.max(
-      0,
-      Number(ruleEl.querySelector(".atw-expiration-heighten-amount")?.value) || 0,
+      1,
+      Math.floor(
+         Number(ruleEl.querySelector(".atw-expiration-heighten-amount")?.value) ||
+            1,
+      ),
    )
    action.unit =
       ruleEl.querySelector(".atw-expiration-heighten-unit")?.value ?? "minutes"
