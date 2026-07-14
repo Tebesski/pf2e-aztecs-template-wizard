@@ -120,6 +120,7 @@
             "AddTrigger": "添加触发条件…",
             "Target": "目标",
             "AddTarget": "添加目标…",
+            "IncludePlacer": "包含放置者",
             "RollOptionsPlaceholder": "例如：self:trait:dwarf，self:condition:frightened",
             "RollOptions": "必须具备的掷骰选项",
             "RollOptionsExclude": "必须不具备的掷骰选项",

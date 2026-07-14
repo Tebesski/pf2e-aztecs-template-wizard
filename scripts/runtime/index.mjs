@@ -575,6 +575,7 @@ function installIgnoredByHook() {
          const targetGroups = Array.isArray(flags?.target)
             ? flags.target.filter((t) => typeof t === "string" && t.trim())
             : []
+         const includePlacer = flags?.includePlacer !== false
 
          if (token?.actor && (mustHave.length || mustNotHave.length)) {
             const actorOptions = new Set(token.actor.getRollOptions?.() ?? [])
@@ -592,6 +593,17 @@ function installIgnoredByHook() {
             actorHasAny(token.actor, ignoredBy)
          ) {
             return []
+         }
+
+         if (token?.actor && !includePlacer) {
+            try {
+               const srcItem = flags?.itemUuid
+                  ? fromUuidSync(flags.itemUuid)
+                  : null
+               if (sameActor(srcItem?.actor, token.actor)) return []
+            } catch (e) {
+               undefined
+            }
          }
 
          if (
@@ -622,6 +634,13 @@ function installIgnoredByHook() {
       }
       return original.call(this, token, segment, options)
    }
+}
+
+function sameActor(a, b) {
+   if (!a || !b) return false
+   const aIds = [a.uuid, a.id].filter(Boolean)
+   const bIds = [b.uuid, b.id].filter(Boolean)
+   return aIds.some((id) => bIds.includes(id))
 }
 
 function actorHasAny(actor, uuids) {

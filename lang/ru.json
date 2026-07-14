@@ -156,6 +156,7 @@
          "AddTrigger": "Добавить триггер…",
          "Target": "Цели",
          "AddTarget": "Добавить цель…",
+         "IncludePlacer": "Включать разместившего",
          "RollOptions": "Должны иметь опции броска",
          "RollOptionsHint": "Через запятую. Токены, у актора которых нет любой из этих опций броска, не запустят поведение.",
          "RollOptionsPlaceholder": "например, self:trait:dwarf, self:condition:frightened",

@@ -22,68 +22,83 @@ export function registerChatTemplateButtons() {
 async function injectTemplateButtons(message, html) {
    const root = htmlRoot(html)
    if (!root) return
-   const cards = root.matches?.(".pf2e.chat-card.item-card")
+   const cards = root.matches?.(".pf2e.chat-card")
       ? [root]
-      : Array.from(root.querySelectorAll?.(".pf2e.chat-card.item-card") ?? [])
+      : Array.from(root.querySelectorAll?.(".pf2e.chat-card") ?? [])
    for (const card of cards) {
       try {
-         injectTemplateButtonsIntoCard(card)
+         await injectTemplateButtonsIntoCard(card, message)
       } catch (e) {
          undefined
       }
    }
 }
 
-function injectTemplateButtonsIntoCard(card) {
-   if (!isVanillaItemCard(card)) return
-   if (card.querySelector(".atw-chat-template-button")) return
-   const item = itemFromCard(card)
-   if (!item?.getFlag?.(FLAG_SCOPE, "automation")) return
-   if (
-      item.actor &&
-      !game.user?.isGM &&
-      !item.actor.testUserPermission?.(game.user, "OWNER")
-   ) {
+async function injectTemplateButtonsIntoCard(card, message = null) {
+   if (!isSupportedPf2eCard(card)) return
+   if (card.dataset.atwTemplateButtons === "pending") return
+   if (card.querySelector(".atw-chat-template-button")) {
+      card.dataset.atwTemplateButtons = "ready"
       return
    }
 
-   const castInfo = spellCastInfoFromCard(card, item)
-   const automation = resolvedAutomationForCard(item, castInfo)
-   if (!automation?.enabled) return
-   const variants = variantsForAutomation(automation)
-   if (!variants.length) return
+   let injected = false
+   card.dataset.atwTemplateButtons = "pending"
+   try {
+      const item = await itemFromCard(card, message)
+      if (!item?.getFlag?.(FLAG_SCOPE, "automation")) return
+      if (
+         item.actor &&
+         !game.user?.isGM &&
+         !item.actor.testUserPermission?.(game.user, "OWNER")
+      ) {
+         return
+      }
 
-   const existing = existingTemplateButtonLabels(card)
-   const buttons = variants
-      .map((variant, index) => ({ variant, index, label: placementLabel(variant) }))
-      .filter(({ label }) => !existing.has(normalizeLabel(label)))
-   if (!buttons.length) return
+      const castInfo = spellCastInfoFromCard(card, item)
+      const automation = resolvedAutomationForCard(item, castInfo)
+      if (!automation?.enabled) return
+      const variants = variantsForAutomation(automation)
+      if (!variants.length) return
 
-   const cardButtons = ensureCardButtons(card)
-   const ownerButtons = ensureOwnerButtons(cardButtons)
-   const spellButton = document.createElement("div")
-   spellButton.className = "spell-button atw-chat-template-buttons"
-   spellButton.dataset.tooltipClass = "pf2e"
-   for (const { index, label } of buttons) {
-      const button = document.createElement("button")
-      button.type = "button"
-      button.className = "atw-chat-template-button"
-      button.dataset.action = "atw-place-template-shape"
-      button.dataset.itemUuid = item.uuid
-      button.dataset.shapeIndex = String(index)
-      button.dataset.castInfo = JSON.stringify(castInfo ?? {})
-      button.textContent = label
-      spellButton.append(button)
+      const existing = existingTemplateButtonLabels(card)
+      const buttons = variants
+         .map((variant, index) => ({ variant, index, label: placementLabel(variant) }))
+         .filter(({ label }) => !existing.has(normalizeLabel(label)))
+      if (!buttons.length) return
+
+      const cardButtons = ensureCardButtons(card)
+      const ownerButtons = ensureOwnerButtons(cardButtons)
+      const spellButton = document.createElement("div")
+      spellButton.className = "spell-button atw-chat-template-buttons"
+      spellButton.dataset.tooltipClass = "pf2e"
+      for (const { index, label } of buttons) {
+         const button = document.createElement("button")
+         button.type = "button"
+         button.className = "atw-chat-template-button"
+         button.dataset.action = "atw-place-template-shape"
+         button.dataset.itemUuid = item.uuid
+         button.dataset.shapeIndex = String(index)
+         button.dataset.castInfo = JSON.stringify(castInfo ?? {})
+         button.textContent = label
+         spellButton.append(button)
+      }
+      ownerButtons.append(spellButton)
+      card.dataset.atwTemplateButtons = "ready"
+      injected = true
+   } finally {
+      if (!injected && card.dataset.atwTemplateButtons === "pending") {
+         delete card.dataset.atwTemplateButtons
+      }
    }
-   ownerButtons.append(spellButton)
 }
 
-function isVanillaItemCard(card) {
-   if (!card?.matches?.(".pf2e.chat-card.item-card")) return false
+function isSupportedPf2eCard(card) {
+   if (!card?.matches?.(".pf2e.chat-card")) return false
    if (card.classList.contains("atw-mtcard")) return false
    if (card.className && String(card.className).includes("atw-")) return false
    if (card.closest(".atw-mtcard")) return false
-   return Boolean(card.dataset.actorId && card.dataset.itemId)
+   return true
 }
 
 function htmlRoot(html) {
@@ -94,7 +109,17 @@ function htmlRoot(html) {
    return null
 }
 
-function itemFromCard(card) {
+async function itemFromCard(card, message = null) {
+   const itemUuid =
+      card.dataset.itemUuid ??
+      card.querySelector("[data-item-uuid]")?.dataset?.itemUuid ??
+      message?.flags?.pf2e?.origin?.uuid ??
+      message?.flags?.pf2e?.origin?.itemUuid ??
+      null
+   if (itemUuid) {
+      const item = await documentFromUuid(itemUuid)
+      if (item) return item
+   }
    const actorId = card.dataset.actorId
    const itemId = card.dataset.itemId
    if (actorId && itemId) {
@@ -103,6 +128,17 @@ function itemFromCard(card) {
       if (item) return item
    }
    return null
+}
+
+async function documentFromUuid(uuid) {
+   if (!uuid) return null
+   if (typeof fromUuidSync === "function") {
+      try {
+         const document = fromUuidSync(uuid)
+         if (document) return document
+      } catch (_e) {}
+   }
+   return fromUuid(uuid).catch(() => null)
 }
 
 function resolvedAutomationForCard(item, castInfo) {
@@ -144,7 +180,7 @@ function baseRankFromItem(item) {
 
 function existingTemplateButtonLabels(card) {
    const labels = new Set()
-   for (const button of card.querySelectorAll("[data-action='spell-template']")) {
+   for (const button of card.querySelectorAll("[data-action='spell-template'], [data-action='atw-place-template-shape']")) {
       labels.add(normalizeLabel(button.textContent ?? ""))
    }
    return labels

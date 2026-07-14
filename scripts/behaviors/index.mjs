@@ -429,7 +429,7 @@ function buildSingleBehaviorData(entry, automation, item) {
    }
 
    if (effectiveType === "executeScript" && typeof system.source === "string") {
-      system.source = wrapActorFilterSource(system.source, entry)
+      system.source = wrapActorFilterSource(system.source, entry, item)
    }
 
    if (EVENT_AWARE_TYPES.has(effectiveType)) {
@@ -467,6 +467,7 @@ function extractGrantSpec(entry) {
    const s = entry.system ?? {}
    const target =
       Array.isArray(s.target) && s.target.length ? s.target.slice() : ["all"]
+   const includePlacer = s.includePlacer !== false
    const rollOptions = parseRollOptions(s.rollOptions)
    const rollOptionsExclude = parseRollOptions(s.rollOptionsExclude)
    const ignoredBy = parseUuidList(s.ignoredBy)
@@ -478,6 +479,7 @@ function extractGrantSpec(entry) {
          kind: "uuid",
          uuid: String(s.uuid),
          target,
+         includePlacer,
          rollOptions,
          rollOptionsExclude,
          ignoredBy,
@@ -492,6 +494,7 @@ function extractGrantSpec(entry) {
          conditionSlug: c.slug,
          conditionValue: c.value,
          target,
+         includePlacer,
          rollOptions,
          rollOptionsExclude,
          ignoredBy,
@@ -523,6 +526,7 @@ function extractGrantSpec(entry) {
          kind: "rules",
          rules: parsed,
          target,
+         includePlacer,
          rollOptions,
          rollOptionsExclude,
          ignoredBy,
@@ -539,6 +543,7 @@ function extractEffectLifecycleSpec(entry) {
    const s = entry.system ?? {}
    const target =
       Array.isArray(s.target) && s.target.length ? s.target.slice() : ["all"]
+   const includePlacer = s.includePlacer !== false
    const rollOptions = parseRollOptions(s.rollOptions)
    const rollOptionsExclude = parseRollOptions(s.rollOptionsExclude)
    const ignoredBy = parseUuidList(s.ignoredBy)
@@ -549,6 +554,7 @@ function extractEffectLifecycleSpec(entry) {
          kind: "uuid",
          uuid: String(s.uuid),
          target,
+         includePlacer,
          rollOptions,
          rollOptionsExclude,
          ignoredBy,
@@ -563,6 +569,7 @@ function extractEffectLifecycleSpec(entry) {
          conditionSlug: c.slug,
          conditionValue: c.value,
          target,
+         includePlacer,
          rollOptions,
          rollOptionsExclude,
          ignoredBy,

@@ -48,6 +48,15 @@ export function targetField() {
    }
 }
 
+export function includePlacerField() {
+   return {
+      key: "includePlacer",
+      type: "boolean",
+      label: "PF2EATW.Field.IncludePlacer",
+      default: true,
+   }
+}
+
 export function triggerTargetFields(
    defaultTriggers = ["tokenEnter"],
    triggerOptions = TRIGGER_OPTIONS,
@@ -64,6 +73,7 @@ export function triggerTargetFields(
          tooltip: "PF2EATW.Tooltip.TriggersDefault",
       },
       targetField(),
+      includePlacerField(),
       ...actorExclusionFields(),
    ]
 }

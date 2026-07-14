@@ -1,5 +1,6 @@
 import {
    FLAG_SCOPE,
+   BEHAVIOR_CATALOG,
    defaultAutomation,
    defaultAdvanced,
    defaultWallRestriction,
@@ -103,6 +104,11 @@ export function normalizeAutomation(raw, item = null) {
       entry.tag = String(entry.tag ?? "")
       if (!entry.system) continue
       entry.heighten = normalizeHeightenRules(entry)
+      const def = BEHAVIOR_CATALOG.find((b) => b.type === entry.type)
+      const hasTargetField = def?.fields?.some((field) => field.key === "target")
+      if (hasTargetField && entry.system.includePlacer === undefined) {
+         entry.system.includePlacer = true
+      }
 
       if (
          entry.system.extraRollOptions !== undefined &&

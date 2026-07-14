@@ -40,7 +40,14 @@ const __tokenDoc = token?.document ?? token;
 const tokenDisp = __tokenDoc?.disposition ?? 1;
 const __placerDispResolved = (placerDisp === undefined || placerDisp === null) ? 1 : placerDisp;
 const isAlly = __placerDispResolved === tokenDisp;
+const isPlacerActor = __atwSameActor(srcItem?.actor, token.actor);
 const actorOpts = new Set(token.actor.getRollOptions?.() ?? []);
+function __atwSameActor(a, b) {
+  if (!a || !b) return false;
+  const aIds = [a.uuid, a.id].filter(Boolean);
+  const bIds = [b.uuid, b.id].filter(Boolean);
+  return aIds.some(id => bIds.includes(id));
+}
 function actorHasAnyUuid(uuids) {
   if (!Array.isArray(uuids) || uuids.length === 0) return false;
   const targets = new Set(uuids);
@@ -60,6 +67,7 @@ function actorHasAnyUuid(uuids) {
 const grants = [];
 const grantLinks = [];
 for (const spec of SPECS) {
+  if (spec.includePlacer === false && isPlacerActor) continue;
   if (Array.isArray(spec.target) && spec.target.length > 0 && !spec.target.includes("all")) {
     if (spec.target.includes("allies") && !isAlly) continue;
     if (spec.target.includes("enemies") && isAlly) continue;
@@ -149,6 +157,7 @@ if (promptForApply) {
 }
 let parentDuration = { value: -1, unit: "unlimited", sustained: false, expiry: "turn-start" };
 for (const spec of SPECS) {
+  if (spec.includePlacer === false && isPlacerActor) continue;
   if (Array.isArray(spec.target) && spec.target.length > 0 && !spec.target.includes("all")) {
     if (spec.target.includes("allies") && !isAlly) continue;
     if (spec.target.includes("enemies") && isAlly) continue;
@@ -344,7 +353,14 @@ const __tokenDoc = token?.document ?? token;
 const tokenDisp = __tokenDoc?.disposition ?? 1;
 const __placerDispResolved = (placerDisp === undefined || placerDisp === null) ? 1 : placerDisp;
 const isAlly = __placerDispResolved === tokenDisp;
+const isPlacerActor = __atwSameActor(srcItem?.actor, actor);
 const actorOpts = new Set(actor.getRollOptions?.() ?? []);
+function __atwSameActor(a, b) {
+  if (!a || !b) return false;
+  const aIds = [a.uuid, a.id].filter(Boolean);
+  const bIds = [b.uuid, b.id].filter(Boolean);
+  return aIds.some(id => bIds.includes(id));
+}
 function actorHasAnyUuid(uuids) {
   if (!Array.isArray(uuids) || uuids.length === 0) return false;
   const targets = new Set(uuids);
@@ -363,6 +379,7 @@ function actorHasAnyUuid(uuids) {
 }
 
 function passesSpec(spec) {
+  if (spec.includePlacer === false && isPlacerActor) return false;
   if (Array.isArray(spec.target) && spec.target.length > 0 && !spec.target.includes("all")) {
     if (spec.target.includes("allies") && !isAlly) return false;
     if (spec.target.includes("enemies") && isAlly) return false;

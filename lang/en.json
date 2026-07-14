@@ -156,6 +156,7 @@
          "AddTrigger": "Add trigger…",
          "Target": "Targets",
          "AddTarget": "Add target…",
+         "IncludePlacer": "Include placer",
          "RollOptions": "Must have roll options",
          "RollOptionsHint": "Comma-separated. Tokens whose actor lacks any of these roll options won't trigger the behaviour.",
          "RollOptionsPlaceholder": "e.g. self:trait:dwarf, self:condition:frightened",

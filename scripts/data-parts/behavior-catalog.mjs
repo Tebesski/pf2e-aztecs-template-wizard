@@ -9,6 +9,7 @@ import {
 } from "./constants.mjs"
 import {
    actorExclusionFields,
+   includePlacerField,
    targetField,
    triggerTargetFields,
 } from "./behavior-field-groups.mjs"
@@ -91,6 +92,7 @@ export const BEHAVIOR_CATALOG = [
             default: DEFAULT_MOVEMENT_ACTIONS,
          },
          targetField(),
+         includePlacerField(),
          ...actorExclusionFields(),
       ],
    },
@@ -601,6 +603,7 @@ export const BEHAVIOR_CATALOG = [
             emptyFallback: ["all"],
             tooltip: "PF2EATW.Tooltip.TargetDefault",
          },
+         includePlacerField(),
          ...actorExclusionFields(),
       ],
    },
